@@ -1,0 +1,23 @@
+required_version: ">= v0.0.0"
+
+cache_database:
+  host: "localhost"
+  username: "postgres"
+  password: "{{ env `PSOTGRES_DB_PASSWORD` `postgres` }}"
+  port: 5432
+  database: "postgres"
+
+default_ttl: 86400s
+
+origins:
+  - id: dummy-example
+    type: Dummy
+    schema: example
+    tables:
+      - hoge
+      - fuga
+  - id: dummy-internal
+    type: Dummy
+    schema: internal
+    tables:
+      - piyo

@@ -1,0 +1,1 @@
+FETCH 300000 IN cursor_8550_0;
