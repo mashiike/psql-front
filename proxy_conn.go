@@ -14,9 +14,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Notifier interface {
+	Notify(ctx context.Context, resp *pgproto3.NoticeResponse) error
+}
+
+type notifier struct {
+	backend *pgproto3.Backend
+}
+
+func (n *notifier) Notify(ctx context.Context, resp *pgproto3.NoticeResponse) error {
+	return n.backend.Send(resp)
+}
+
 type ProxyConnOptions struct {
 	tlsConfig              *tls.Config
-	onQueryReceivedHandler func(ctx context.Context, query string, isPreparedStmt bool) error
+	onQueryReceivedHandler func(ctx context.Context, query string, isPreparedStmt bool, notifier Notifier) error
 }
 
 type ProxyConn struct {
@@ -33,7 +45,7 @@ func WithProxyConnTLS(tlsConfig *tls.Config) func(opts *ProxyConnOptions) {
 	}
 }
 
-func WithProxyConnOnQueryReceived(handler func(ctx context.Context, query string, isPreparedStmt bool) error) func(opts *ProxyConnOptions) {
+func WithProxyConnOnQueryReceived(handler func(ctx context.Context, query string, isPreparedStmt bool, notifier Notifier) error) func(opts *ProxyConnOptions) {
 	return func(opts *ProxyConnOptions) {
 		opts.onQueryReceivedHandler = handler
 	}
@@ -129,15 +141,29 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			case *pgproto3.Query:
 				log.Printf("[info][%s] receive message from client: incoming SQL: %s", remoteAddr, fm.String)
 				if conn.opts.onQueryReceivedHandler != nil {
-					if err := conn.opts.onQueryReceivedHandler(cctx, fm.String, false); err != nil {
-						return fmt.Errorf("on query recived:%w", err)
+					if err := conn.opts.onQueryReceivedHandler(cctx, fm.String, false, &notifier{backend: conn.backend}); err != nil {
+						log.Printf("[error] on query received: %v", err)
+						if err := conn.backend.Send(&pgproto3.NoticeResponse{
+							Severity: "WARNING",
+							Message:  "Failed on query received handler",
+							Detail:   err.Error(),
+						}); err != nil {
+							return fmt.Errorf("on query recived:%w", err)
+						}
 					}
 				}
 			case *pgproto3.Parse:
 				log.Printf("[info][%s] receive message from client: parse SQL: %s name=%s", remoteAddr, fm.Query, fm.Name)
 				if conn.opts.onQueryReceivedHandler != nil {
-					if err := conn.opts.onQueryReceivedHandler(cctx, fm.Query, true); err != nil {
-						return fmt.Errorf("on query recived:%w", err)
+					if err := conn.opts.onQueryReceivedHandler(cctx, fm.Query, true, &notifier{backend: conn.backend}); err != nil {
+						log.Printf("[error] on query received: %v", err)
+						if err := conn.backend.Send(&pgproto3.NoticeResponse{
+							Severity: "WARNING",
+							Message:  "Failed on query received handler",
+							Detail:   err.Error(),
+						}); err != nil {
+							return fmt.Errorf("on query recived:%w", err)
+						}
 					}
 				}
 			case *pgproto3.Describe:

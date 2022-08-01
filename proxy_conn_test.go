@@ -47,7 +47,7 @@ func TestProxyConn(t *testing.T) {
 					psqlfront.WithProxyConnTLS(&tls.Config{
 						Certificates: []tls.Certificate{cert},
 					}),
-					psqlfront.WithProxyConnOnQueryReceived(func(_ context.Context, query string, _ bool) error {
+					psqlfront.WithProxyConnOnQueryReceived(func(_ context.Context, query string, _ bool, _ psqlfront.Notifier) error {
 						actual = query
 						return nil
 					}),

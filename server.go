@@ -12,6 +12,8 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/Songmu/flextime"
+	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/samber/lo"
@@ -188,11 +190,13 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 	wg.Wait()
 	return nil
 }
-func (server *Server) handleQuery(ctx context.Context, query string, isPrepareStmt bool) error {
+
+func (server *Server) handleQuery(ctx context.Context, query string, isPrepareStmt bool, notifier Notifier) error {
 	remoteAddr := GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] analyze SQL: %s", remoteAddr, query)
 	tables, err := AnalyzeQuery(query)
 	if err != nil {
+		log.Printf("[debug][%s] analyze SQL failed: %v", remoteAddr, err)
 		return err
 	}
 	log.Printf("[info][%s] referenced tables: [%s]", remoteAddr, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
@@ -201,7 +205,7 @@ func (server *Server) handleQuery(ctx context.Context, query string, isPrepareSt
 	if len(tables) == 0 {
 		return nil
 	}
-	if err := server.controlCache(ctx, query, tables); err != nil {
+	if err := server.controlCache(ctx, query, tables, notifier); err != nil {
 		return fmt.Errorf("control cache failed: %w", err)
 	}
 	return nil
@@ -226,7 +230,7 @@ func (server *Server) analezeTables(ctx context.Context, tables []*Table) error 
 	return err
 }
 
-func (server *Server) controlCache(ctx context.Context, query string, refarencedTables []*Table) error {
+func (server *Server) controlCache(ctx context.Context, query string, refarencedTables []*Table, notifier Notifier) error {
 	remoteAddr := GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] try cache control SQL: %s", remoteAddr, query)
 	tables := make([]*Table, 0, len(refarencedTables))
@@ -255,6 +259,20 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 		_, ok := cacheInfo[t.String()]
 		return !ok
 	})
+	hitTables := lo.Filter(tables, func(t *Table, _ int) bool {
+		_, ok := cacheInfo[t.String()]
+		return ok
+	})
+	defer func() {
+		if len(hitTables) > 0 {
+			notifier.Notify(ctx, &pgproto3.NoticeResponse{
+				Severity: "NOTICE",
+				Message: fmt.Sprintf("cache hit: [%s]", strings.Join(lo.Map(hitTables, func(table *Table, _ int) string {
+					return table.String()
+				}), ", ")),
+			})
+		}
+	}()
 	if len(noHitTables) == 0 {
 		log.Printf("[info][%s] all tables cache hit", remoteAddr)
 		return nil
@@ -352,7 +370,7 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 		"origin_id",
 		"cached_at",
 		"expired_at",
-	).From(cacheLifecycleTable.String()).Where(sq.And{cond, sq.Expr("expired_at > NOW()")}).ToSql()
+	).From(cacheLifecycleTable.String()).Where(sq.And{cond /*, sq.Expr("expired_at > NOW()")*/}).ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build query:%w", err)
 	}
@@ -361,6 +379,7 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 	if err != nil {
 		return nil, err
 	}
+	now := flextime.Now()
 	defer rows.Close()
 	result := make(map[string]*CacheInfo)
 	for rows.Next() {
@@ -374,15 +393,31 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 		); err != nil {
 			return nil, fmt.Errorf("row scan: %w", err)
 		}
-		log.Printf(
-			"[debug][%s] origin_id:%s schema_name:%s table_name:%s cached_at:%s, exired_at:%s", remoteAddr,
-			cacheInfo.OriginID, cacheInfo.SchemaName, cacheInfo.TableName, cacheInfo.CachedAt.Format(time.RFC3339), cacheInfo.ExpiredAt.Format(time.RFC3339),
-		)
 		t := &Table{
 			SchemaName: cacheInfo.SchemaName,
 			RelName:    cacheInfo.TableName,
 		}
-		result[t.String()] = &cacheInfo
+		originID, ok := server.originIDsByTable[t.String()]
+		if ok && originID != cacheInfo.OriginID {
+			cacheInfo.OriginID = originID
+			ttl, ok := server.cacheTTL[originID]
+			if ok {
+				renew := cacheInfo.CachedAt.Add(ttl)
+				log.Printf("[debug][%s] origin_id:%s schema_name:%s table_name:%s expred_at:%s=>%s", remoteAddr,
+					cacheInfo.OriginID, cacheInfo.SchemaName, cacheInfo.TableName, cacheInfo.ExpiredAt.Format(time.RFC3339), renew.Format(time.RFC3339),
+				)
+				cacheInfo.ExpiredAt = renew
+			}
+		}
+
+		log.Printf(
+			"[debug][%s] origin_id:%s schema_name:%s table_name:%s cached_at:%s, exired_at:%s", remoteAddr,
+			cacheInfo.OriginID, cacheInfo.SchemaName, cacheInfo.TableName, cacheInfo.CachedAt.Format(time.RFC3339), cacheInfo.ExpiredAt.Format(time.RFC3339),
+		)
+
+		if !now.After(cacheInfo.ExpiredAt) {
+			result[t.String()] = &cacheInfo
+		}
 	}
 	return result, nil
 }
