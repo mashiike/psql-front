@@ -118,7 +118,12 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			fm, err := conn.backend.Receive()
 			if err != nil {
-				return fmt.Errorf("receive message from client:%w", err)
+				select {
+				case <-cctx.Done():
+					return nil
+				default:
+					return fmt.Errorf("receive message from client:%w", err)
+				}
 			}
 			switch fm := fm.(type) {
 			case *pgproto3.Query:
@@ -163,7 +168,12 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			bm, err := conn.frontend.Receive()
 			if err != nil {
-				return fmt.Errorf("receive message from upstream:%w", err)
+				select {
+				case <-cctx.Done():
+					return nil
+				default:
+					return fmt.Errorf("receive message from upstream:%w", err)
+				}
 			}
 			conn.backend.SetAuthType(conn.frontend.GetAuthType())
 			switch bm := bm.(type) {

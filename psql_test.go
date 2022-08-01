@@ -15,6 +15,9 @@ import (
 
 func requirePSQL(t *testing.T) *psqlfront.CacheDatabaseConfig {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("Skipping long-running test in short mode")
+	}
 	host := os.Getenv("TEST_POSTGRES_HOST")
 	if host == "" {
 		t.SkipNow()

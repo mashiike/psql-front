@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,18 +25,23 @@ func TestProxyConn(t *testing.T) {
 	var actual string
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			client, err := listener.Accept()
-			require.NoError(t, err)
 			select {
 			case <-ctx.Done():
 				return
 			default:
+				require.NoError(t, err)
 			}
 			upstream, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
 			require.NoError(t, err)
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				conn, err := psqlfront.NewProxyConn(
 					client, upstream,
 					psqlfront.WithProxyConnTLS(&tls.Config{
@@ -94,4 +100,7 @@ func TestProxyConn(t *testing.T) {
 	rows.Close()
 	require.EqualValues(t, expected, actual)
 	require.Equal(t, 1, len(values))
+	cancel()
+	listener.Close()
+	wg.Wait()
 }
