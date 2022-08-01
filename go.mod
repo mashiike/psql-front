@@ -13,10 +13,10 @@ require (
 	github.com/kayac/go-config v0.6.0
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/pganalyze/pg_query_go/v2 v2.1.2
-	github.com/samber/lo v1.25.0
+	github.com/samber/lo v1.27.0
 	github.com/stretchr/testify v1.7.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
