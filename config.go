@@ -92,7 +92,7 @@ type CacheDatabaseConfig struct {
 }
 
 func (cfg *CacheDatabaseConfig) DSN() string {
-	return fmt.Sprintf(
+	dsn := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s",
 		cfg.Username,
 		cfg.Password,
@@ -100,6 +100,10 @@ func (cfg *CacheDatabaseConfig) DSN() string {
 		cfg.Port,
 		cfg.Database,
 	)
+	if cfg.SSLMode != "" {
+		dsn += fmt.Sprintf("?sslmode=%s", cfg.SSLMode)
+	}
+	return dsn
 }
 
 type CertificateConfig struct {

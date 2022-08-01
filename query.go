@@ -11,10 +11,10 @@ import (
 	"github.com/samber/lo"
 )
 
-func AnalyzeQuery(query string) ([]*Table, bool, error) {
+func AnalyzeQuery(query string) ([]*Table, error) {
 	tree, err := pgquery.ParseToJSON(query)
 	if err != nil {
-		return nil, false, fmt.Errorf("parse query: %w", err)
+		return nil, fmt.Errorf("parse query: %w", err)
 	}
 	var dst bytes.Buffer
 	json.Indent(&dst, []byte(tree), "", "  ")
@@ -22,39 +22,36 @@ func AnalyzeQuery(query string) ([]*Table, bool, error) {
 	log.Printf("[debug] structure: \n%s", dst.String())
 	var obj interface{}
 	if err := json.Unmarshal([]byte(tree), &obj); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	stmts, err := findJSONValues[map[string]interface{}](obj, "stmt")
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	var isQueryRows, isTablesParseTarget bool
+	var isTablesParseTarget bool
 	for _, stmt := range stmts {
 		if _, ok := stmt["SelectStmt"]; ok {
-			isQueryRows = true
 			isTablesParseTarget = true
-		} else if _, ok := stmt["FetchStmt"]; ok {
-			isQueryRows = true
 		} else if _, ok := stmt["DeclareCursorStmt"]; ok {
 			isTablesParseTarget = true
 		}
 	}
 	if !isTablesParseTarget {
-		return []*Table{}, isQueryRows, nil
+		return []*Table{}, nil
 	}
 	fromClauses, err := findJSONValues[[]interface{}](obj, "fromClause")
 	if err != nil {
-		return nil, isQueryRows, err
+		return nil, err
 	}
 	ctes, err := findJSONValues[string](obj, "ctename")
 	if err != nil {
-		return nil, isQueryRows, err
+		return nil, err
 	}
 	tables := make([]*Table, 0, len(fromClauses))
 	for _, fromClause := range fromClauses {
 		rangeVars, err := findJSONValues[map[string]interface{}](fromClause, "RangeVar")
 		if err != nil {
-			return nil, isQueryRows, err
+			return nil, err
 		}
 		for _, rangeVar := range rangeVars {
 			relname, ok := rangeVar["relname"].(string)
@@ -78,7 +75,7 @@ func AnalyzeQuery(query string) ([]*Table, bool, error) {
 		}
 	}
 
-	return tables, isQueryRows, nil
+	return tables, nil
 }
 
 func findJSONValues[T any](obj interface{}, key string) ([]T, error) {

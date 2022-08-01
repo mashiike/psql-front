@@ -23,7 +23,12 @@ func (o *DummyOrigin) GetTables(ctx context.Context) ([]*psqlfront.Table, error)
 	return o.tables, nil
 }
 
-func (o *DummyOrigin) GetRows(context.Context, psqlfront.CacheWriter, *psqlfront.Table) error {
+func (o *DummyOrigin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
+	row := make([]interface{}, 0, len(table.Columns))
+	for _, c := range table.Columns {
+		row = append(row, "value_"+c.Name)
+	}
+	w.AppendRows(ctx, [][]interface{}{row})
 	return nil
 }
 
@@ -46,9 +51,17 @@ func (cfg *DummyOriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 	return &DummyOrigin{
 		id: id,
 		tables: lo.Map(cfg.Tables, func(table string, _ int) *psqlfront.Table {
+			l := int(256)
 			return &psqlfront.Table{
 				SchemaName: cfg.Schema,
 				RelName:    table,
+				Columns: []*psqlfront.Column{
+					{
+						Name:     "id",
+						DataType: "varchar",
+						Length:   &l,
+					},
+				},
 			}
 		}),
 	}, nil
@@ -75,16 +88,31 @@ tables:
 	require.EqualValues(t, DummyOriginType, cfg.OriginConfig.Type())
 	origin, err := cfg.NewOrigin()
 	require.NoError(t, err)
+	l := int(256)
 	expected := &DummyOrigin{
 		id: "hoge",
 		tables: []*psqlfront.Table{
 			{
 				SchemaName: "psqlfront_test",
 				RelName:    "dummy",
+				Columns: []*psqlfront.Column{
+					{
+						Name:     "id",
+						DataType: "varchar",
+						Length:   &l,
+					},
+				},
 			},
 			{
 				SchemaName: "psqlfront_test",
 				RelName:    "hoge",
+				Columns: []*psqlfront.Column{
+					{
+						Name:     "id",
+						DataType: "varchar",
+						Length:   &l,
+					},
+				},
 			},
 		},
 	}

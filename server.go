@@ -12,11 +12,8 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	psqlwire "github.com/jeroenrinzema/psql-wire"
-	"github.com/lib/pq/oid"
 	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 )
@@ -35,15 +32,14 @@ func (conn *ProxyConnection) Close(ctx context.Context) error {
 }
 
 type Server struct {
-	s                        *psqlwire.Server
-	db                       *pgxpool.Pool
-	cacheTTL                 map[string]time.Duration
-	origins                  map[string]Origin
-	originIDsByTable         map[string]string
-	tables                   map[string]*Table
-	migrator                 *Migrator
-	proxyConnections         map[string]*ProxyConnection
-	proxyConnectionGenerator func(ctx context.Context, id string) (*ProxyConnection, error)
+	db               *pgxpool.Pool
+	cacheTTL         map[string]time.Duration
+	origins          map[string]Origin
+	originIDsByTable map[string]string
+	tables           map[string]*Table
+	migrator         *Migrator
+	tlsConfig        *tls.Config
+	upstreamAddr     string
 }
 
 func New(ctx context.Context, cfg *Config) (*Server, error) {
@@ -62,43 +58,7 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		originIDsByTable: make(map[string]string),
 		tables:           make(map[string]*Table),
 		migrator:         NewMigrator(cfg.CacheDatabase),
-		proxyConnections: make(map[string]*ProxyConnection),
-		proxyConnectionGenerator: func(ctx context.Context, id string) (*ProxyConnection, error) {
-			conn, err := pgx.Connect(ctx, cfg.CacheDatabase.DSN())
-			if err != nil {
-				return nil, err
-			}
-			log.Println("[info] new connection: ", id)
-			return &ProxyConnection{
-				id:   id,
-				Conn: conn,
-			}, nil
-		},
-	}
-	serverOpts := []psqlwire.OptionFn{
-		psqlwire.SimpleQuery(server.handleSimpleQuery),
-		psqlwire.CloseConn(func(ctx context.Context) error {
-			var mark string
-			if proxyConnection, err := server.ProxyConnection(ctx); err == nil {
-				mark = fmt.Sprintf(": %s", proxyConnection.ID())
-				if err := proxyConnection.Close(ctx); err != nil {
-					return fmt.Errorf("proxy connection close:%w", err)
-				}
-			}
-			log.Printf("[info] close connection%s", mark)
-			return nil
-		}),
-		psqlwire.TerminateConn(func(ctx context.Context) error {
-			var mark string
-			if proxyConnection, err := server.ProxyConnection(ctx); err == nil {
-				mark = fmt.Sprintf(": %s", proxyConnection.ID())
-				if err := proxyConnection.Close(ctx); err != nil {
-					return fmt.Errorf("proxy connection close:%w", err)
-				}
-			}
-			log.Printf("[info] terminate connection%s", mark)
-			return nil
-		}),
+		upstreamAddr:     fmt.Sprintf("%s:%d", cfg.CacheDatabase.Host, cfg.CacheDatabase.Port),
 	}
 	if len(cfg.Certificates) > 0 {
 		log.Println("[info] use TLS")
@@ -110,19 +70,10 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 			}
 			certs = append(certs, cert)
 		}
-		serverOpts = append(serverOpts, psqlwire.Certificates(certs))
-	}
-	server.s, err = psqlwire.NewServer(serverOpts...)
-	if err != nil {
-		return nil, err
-	}
-	server.s.Auth = psqlwire.ClearTextPassword(func(username, password string) (bool, error) {
-		if username != cfg.CacheDatabase.Username || password != cfg.CacheDatabase.Password {
-			return false, nil
+		server.tlsConfig = &tls.Config{
+			Certificates: certs,
 		}
-		return true, nil
-	})
-
+	}
 	for _, origin := range cfg.Origins {
 		server.cacheTTL[origin.ID] = *origin.TTL
 		o, err := origin.NewOrigin()
@@ -135,6 +86,31 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 }
 
 func (server *Server) RunWithContext(ctx context.Context, address string) error {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
+	return server.RunWithContextAndListener(ctx, listener)
+}
+
+type psqlfrontCtxKey string
+
+var remoteAddrCtxKey psqlfrontCtxKey = "__remote_addr"
+
+func withRemoteAddr(ctx context.Context, remoteAddr string) context.Context {
+	return context.WithValue(ctx, remoteAddrCtxKey, remoteAddr)
+}
+
+func GetRemoteAddr(ctx context.Context) string {
+	remoteAddr, ok := ctx.Value(remoteAddrCtxKey).(string)
+	if ok {
+		return remoteAddr
+	}
+	return "-"
+}
+
+func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
+	defer listener.Close()
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {
 		t, err := origin.GetTables(ctx)
@@ -154,122 +130,81 @@ func (server *Server) RunWithContext(ctx context.Context, address string) error 
 	if err := server.analezeTables(ctx, tables); err != nil {
 		return fmt.Errorf("execute initial analyze:%w", err)
 	}
-	ctx, cancel := context.WithCancel(ctx)
+
+	opts := []func(opts *ProxyConnOptions){
+		WithProxyConnOnQueryReceived(server.handleQuery),
+	}
+	if server.tlsConfig != nil {
+		opts = append(opts, WithProxyConnTLS(server.tlsConfig))
+	}
+
+	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		<-ctx.Done()
-		log.Println("[info] start shutdown...")
-		server.Close()
-	}()
-
-	log.Printf("[info] PostgreSQL server is up and running at [%s]", address)
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := listener.Close(); err != nil {
-			log.Println("[debug] on listener close:", err)
-		}
-	}()
-	err = server.s.Serve(listener)
-
-	wg.Wait()
-	log.Println("[info] shutdown.")
-	if err != nil {
-		var oe *net.OpError
-		if errors.As(err, &oe) {
-			if oe.Op == "accept" {
-				return nil
+		log.Printf("[info] PostgreSQL server is up and running at [%s]", listener.Addr())
+		for {
+			client, err := listener.Accept()
+			if err != nil {
+				select {
+				case <-cctx.Done():
+					cancel()
+					return
+				default:
+					log.Printf("[error] Listener accept: %v", err)
+				}
+			} else {
+				remoteAddr := client.RemoteAddr().String()
+				log.Printf("[info][%s] new connection", remoteAddr)
+				upstream, err := net.Dial("tcp", server.upstreamAddr)
+				if err != nil {
+					log.Printf("[error][%s] can not connect upstream:%v", remoteAddr, err)
+					continue
+				}
+				conn, err := NewProxyConn(client, upstream, opts...)
+				if err != nil {
+					log.Printf("[error][%s] can create proxy conn:%v", remoteAddr, err)
+					upstream.Close()
+					continue
+				}
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := conn.Run(withRemoteAddr(cctx, remoteAddr)); err != nil {
+						log.Printf("[error][%s] run proxy conn:%v", remoteAddr, err)
+					}
+					log.Printf("[info][%s] close connection", remoteAddr)
+				}()
 			}
 		}
-		return err
-	}
+	}()
+
+	<-ctx.Done()
+	log.Println("[info] shutdown...")
+	cancel()
+	listener.Close()
+	wg.Wait()
 	return nil
 }
-
-func (server *Server) handleSimpleQuery(ctx context.Context, query string, writer psqlwire.DataWriter) error {
-	log.Println("[debug] incoming SQL:", query)
-	proxyConnection, err := server.ProxyConnection(ctx)
+func (server *Server) handleQuery(ctx context.Context, query string, isPrepareStmt bool) error {
+	remoteAddr := GetRemoteAddr(ctx)
+	log.Printf("[debug][%s] analyze SQL: %s", remoteAddr, query)
+	tables, err := AnalyzeQuery(query)
 	if err != nil {
 		return err
 	}
-	connectionID := proxyConnection.ID()
-	log.Printf("[info][%s] incoming SQL: %s", connectionID, query)
-	tables, isQueryRows, err := AnalyzeQuery(query)
-	if err != nil {
-		return err
-	}
-	log.Printf("[info][%s] referenced tables: [%s]", connectionID, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
+	log.Printf("[info][%s] referenced tables: [%s]", remoteAddr, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
 		return table.String()
 	}), ", "))
-
+	if len(tables) == 0 {
+		return nil
+	}
 	if err := server.controlCache(ctx, query, tables); err != nil {
 		return fmt.Errorf("control cache failed: %w", err)
 	}
-
-	if err := server.executeQuery(ctx, query, isQueryRows, writer); err != nil {
-		return err
-	}
-	log.Printf("[info][%s] success SQL", connectionID)
 	return nil
-}
-
-func (server *Server) executeQuery(ctx context.Context, query string, isQueryRows bool, writer psqlwire.DataWriter) error {
-	proxyConnection, err := server.ProxyConnection(ctx)
-	if err != nil {
-		return fmt.Errorf("get proxy connection:%w", err)
-	}
-	if !isQueryRows {
-		tag, err := proxyConnection.Exec(ctx, query)
-		if err != nil {
-			log.Println("[info] failed SQL query:", err)
-			return errors.New(strings.TrimSpace(strings.TrimPrefix(err.Error(), "ERROR:")))
-		}
-		return writer.Complete(tag.String())
-	}
-
-	rows, err := proxyConnection.Query(ctx, query)
-	if err != nil {
-		log.Println("[info] failed SQL query:", err)
-		return errors.New(strings.TrimSpace(strings.TrimPrefix(err.Error(), "ERROR:")))
-	}
-	defer rows.Close()
-	fieldDescriptions := rows.FieldDescriptions()
-	columns := make(psqlwire.Columns, 0, len(fieldDescriptions))
-	for _, fieldDescription := range fieldDescriptions {
-		column := psqlwire.Column{
-			Table:  int32(fieldDescription.TableOID),
-			Name:   string(fieldDescription.Name),
-			AttrNo: int16(fieldDescription.TableAttributeNumber),
-			Oid:    oid.Oid(fieldDescription.DataTypeOID),
-			Width:  fieldDescription.DataTypeSize,
-		}
-		if fieldDescription.TypeModifier >= 0 {
-			column.TypeModifier = fieldDescription.TypeModifier
-		}
-		columns = append(columns, column)
-	}
-	if err := writer.Define(columns); err != nil {
-		return fmt.Errorf("define: %w", err)
-	}
-	for rows.Next() {
-		values, err := rows.Values()
-		if err != nil {
-			return fmt.Errorf("row values: %w", err)
-		}
-		if err := writer.Row(values); err != nil {
-			return fmt.Errorf("wirter row: %w", err)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("rows: %w", err)
-	}
-
-	return writer.Complete("OK")
 }
 
 var cacheLifecycleTable = &Table{
@@ -278,26 +213,22 @@ var cacheLifecycleTable = &Table{
 }
 
 func (server *Server) analezeTables(ctx context.Context, tables []*Table) error {
-	var mark string
-	if proxyConnection, err := server.ProxyConnection(ctx); err == nil {
-		mark = fmt.Sprintf("[%s]", proxyConnection.ID())
-	}
+	remoteAddr := GetRemoteAddr(ctx)
+	log.Printf("[debug][%s] try analyze table", remoteAddr)
 	if len(tables) == 0 {
 		return nil
 	}
 	sql := "ANALYZE " + strings.Join(lo.Map(tables, func(table *Table, _ int) string {
 		return table.String()
 	}), ", ") + ";"
-	log.Printf("[info]%s execute: %s", mark, sql)
+	log.Printf("[info][%s] execute: %s", remoteAddr, sql)
 	_, err := server.db.Exec(ctx, sql)
 	return err
 }
 
 func (server *Server) controlCache(ctx context.Context, query string, refarencedTables []*Table) error {
-	var mark string
-	if proxyConnection, err := server.ProxyConnection(ctx); err == nil {
-		mark = fmt.Sprintf("[%s]", proxyConnection.ID())
-	}
+	remoteAddr := GetRemoteAddr(ctx)
+	log.Printf("[debug][%s] try cache control SQL: %s", remoteAddr, query)
 	tables := make([]*Table, 0, len(refarencedTables))
 	for _, table := range refarencedTables {
 		if table.String() == cacheLifecycleTable.String() {
@@ -313,7 +244,7 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 		tables = append(tables, t)
 	}
 	if len(tables) == 0 {
-		log.Printf("[info]%s only system tables or no managed by psqlfront, no check cache", mark)
+		log.Printf("[info][%s] only system tables or no managed by psqlfront, no check cache", remoteAddr)
 		return nil
 	}
 	cacheInfo, err := server.getCacheInfo(ctx, tables)
@@ -325,10 +256,10 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 		return !ok
 	})
 	if len(noHitTables) == 0 {
-		log.Printf("[info]%s all tables cache hit", mark)
+		log.Printf("[info][%s] all tables cache hit", remoteAddr)
 		return nil
 	}
-	log.Printf("[info]%s cache no hit tables: [%s]", mark, strings.Join(lo.Map(noHitTables, func(table *Table, _ int) string {
+	log.Printf("[info][%s] cache no hit tables: [%s]", remoteAddr, strings.Join(lo.Map(noHitTables, func(table *Table, _ int) string {
 		return table.String()
 	}), ", "))
 	eg, egctx := errgroup.WithContext(ctx)
@@ -345,23 +276,23 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 			defer func() {
 				if !commited && !rollbacked {
 					if err := tx.Rollback(ctx); err != nil {
-						log.Printf("[warn]%s %s tx rollback failed: %v", mark, t.String(), err)
+						log.Printf("[warn][%s] %s tx rollback failed: %v", remoteAddr, t.String(), err)
 					} else {
-						log.Printf("[debug]%s %s tx rollback", mark, t.String())
+						log.Printf("[debug][%s] %s tx rollback", remoteAddr, t.String())
 					}
 				}
-				log.Printf("[debug]%s end `%s` tx", mark, t.String())
+				log.Printf("[debug][%s] end `%s` tx", remoteAddr, t.String())
 			}()
 			if err := server.refreshCache(egctx, tx, t); err != nil {
-				log.Printf("[warn]%s %s can not refresh cache: %v", mark, t, err)
+				log.Printf("[warn][%s] %s can not refresh cache: %v", remoteAddr, t, err)
 				var onfe *OriginNotFoundError
 				if !errors.As(err, &onfe) {
 					return fmt.Errorf("refresh cache:%w", err)
 				}
 				if err := tx.Rollback(ctx); err != nil {
-					log.Printf("[warn]%s %s tx rollback failed: %v", mark, t.String(), err)
+					log.Printf("[warn][%s] %s tx rollback failed: %v", remoteAddr, t.String(), err)
 				} else {
-					log.Printf("[debug]%s %s tx rollback", mark, t.String())
+					log.Printf("[debug][%s] %s tx rollback", remoteAddr, t.String())
 				}
 				rollbacked = true
 				return nil
@@ -406,10 +337,8 @@ type CacheInfo struct {
 var psqlQueryBuilder = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[string]*CacheInfo, error) {
-	var mark string
-	if proxyConnection, err := server.ProxyConnection(ctx); err == nil {
-		mark = fmt.Sprintf("[%s]", proxyConnection.ID())
-	}
+	remoteAddr := GetRemoteAddr(ctx)
+	log.Printf("[debug][%s] get cache info", remoteAddr)
 	cond := make(sq.Or, 0, len(tables))
 	for _, table := range tables {
 		cond = append(cond, sq.Eq{
@@ -427,7 +356,7 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 	if err != nil {
 		return nil, fmt.Errorf("build query:%w", err)
 	}
-	log.Printf("[debug]%s execute: %s; %v", mark, sql, args)
+	log.Printf("[debug][%s] execute: %s; %v", remoteAddr, sql, args)
 	rows, err := server.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
@@ -446,7 +375,7 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 			return nil, fmt.Errorf("row scan: %w", err)
 		}
 		log.Printf(
-			"[debug]%s origin_id:%s schema_name:%s table_name:%s cached_at:%s, exired_at:%s", mark,
+			"[debug][%s] origin_id:%s schema_name:%s table_name:%s cached_at:%s, exired_at:%s", remoteAddr,
 			cacheInfo.OriginID, cacheInfo.SchemaName, cacheInfo.TableName, cacheInfo.CachedAt.Format(time.RFC3339), cacheInfo.ExpiredAt.Format(time.RFC3339),
 		)
 		t := &Table{
@@ -546,51 +475,4 @@ func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table)
 	}
 	log.Printf("[info] %s %s", cacheLifecycleTable.String(), tag)
 	return nil
-}
-
-func (server *Server) Close() error {
-	closedCh := make(chan struct{})
-	go func() {
-		if err := server.s.Close(); err != nil {
-			log.Println("[error] on close:", err)
-		}
-		close(closedCh)
-	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	select {
-	case <-ctx.Done():
-		log.Println("[warn] close timeout")
-		return ctx.Err()
-	case <-closedCh:
-		return nil
-	}
-}
-
-var parameterConnectionStatus psqlwire.ParameterStatus = "__psql_front_connection_id"
-
-func (server *Server) ProxyConnection(ctx context.Context) (*ProxyConnection, error) {
-	params := psqlwire.ServerParameters(ctx)
-	if params == nil {
-		return nil, errors.New("server params is nil")
-	}
-	connectionID, ok := params[parameterConnectionStatus]
-	if ok {
-		if conn, ok := server.proxyConnections[connectionID]; ok {
-			return conn, nil
-		}
-		return nil, fmt.Errorf("proxy conenction not found for `%s`", connectionID)
-	}
-	uuidObj, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("generate uuid:%w", err)
-	}
-	connectionID = uuidObj.String()
-	proxyConnection, err := server.proxyConnectionGenerator(ctx, connectionID)
-	if err != nil {
-		return nil, fmt.Errorf("generate proxy connection:%w", err)
-	}
-	server.proxyConnections[connectionID] = proxyConnection
-	params[parameterConnectionStatus] = connectionID
-	return proxyConnection, nil
 }

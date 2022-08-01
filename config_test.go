@@ -26,7 +26,7 @@ func TestConfigLoadNoError(t *testing.T) {
 			casename: "default config",
 			path:     "testdata/config/default.yaml",
 			check: func(t *testing.T, cfg *psqlfront.Config) {
-				require.EqualValues(t, "postgres://postgres:postgres@localhost:5432/postgres", cfg.CacheDatabase.DSN())
+				require.EqualValues(t, "postgres://postgres:postgres@localhost:5432/postgres?sslmode=prefer", cfg.CacheDatabase.DSN())
 				require.EqualValues(t, []string{"dummy-example", "dummy-internal"}, lo.Map(cfg.Origins, func(o *psqlfront.CommonOriginConfig, _ int) string {
 					return o.ID
 				}))
