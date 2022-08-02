@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -144,11 +143,6 @@ type CertificateConfig struct {
 	Key  string `yaml:"key,omitempty"`
 
 	certificate tls.Certificate
-}
-
-func isExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func loadSrcFrom(path string) ([]byte, error) {
