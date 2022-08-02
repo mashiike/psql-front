@@ -19,6 +19,8 @@ builds:
     ignore:
       - goos: darwin
         goarch: amd64
+      - goos: windows
+        goarch: amd64
 release:
   prerelease: true
 archives:
