@@ -40,6 +40,11 @@ func main() {
 		config   string
 		port     uint64
 	)
+	flag.CommandLine.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "Usage of psql-front")
+		fmt.Fprintln(flag.CommandLine.Output(), "version:", Version)
+		flag.CommandLine.PrintDefaults()
+	}
 	flag.StringVar(&minLevel, "log-level", "info", "log level")
 	flag.StringVar(&config, "config", "", "psql-front config")
 	flag.Uint64Var(&port, "port", 5434, "psql-front port")
