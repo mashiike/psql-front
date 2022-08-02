@@ -105,11 +105,6 @@ postgres=#
 
 ### Install 
 
-#### Homebrew (macOS and Linux)
-
-```console
-$ brew install mashiike/tap/psql-front
-```
 #### Binary packages
 
 [Releases](https://github.com/mashiike/psql-front/releases)
