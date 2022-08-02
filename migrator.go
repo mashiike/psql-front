@@ -18,6 +18,7 @@ type Migrator struct {
 	parser     database.GenericParser
 	target     database.Config
 	disableSSL bool
+	preferSSL  bool
 }
 
 func NewMigrator(cfg *CacheDatabaseConfig) *Migrator {
@@ -32,6 +33,7 @@ func NewMigrator(cfg *CacheDatabaseConfig) *Migrator {
 			Port:     cfg.Port,
 		},
 		disableSSL: cfg.SSLMode == "disable",
+		preferSSL:  cfg.SSLMode == "prefer",
 	}
 }
 
@@ -92,7 +94,22 @@ func (m *Migrator) executeMigration(desiredDDLs string, beforeApply string) erro
 	defer targetDB.Close()
 	currentDDLs, err := targetDB.DumpDDLs()
 	if err != nil {
-		return fmt.Errorf("failed dump target db ddls:%w", err)
+		if strings.Contains(err.Error(), "SSL is not enabled") && m.preferSSL {
+			log.Println("[debug] ssl_mode prefer retry migrate on ssl disable")
+			originalEnv := os.Getenv("PGSSLMODE")
+			os.Setenv("PGSSLMODE", "disable")
+			targetDB, err = postgres.NewDatabase(m.target)
+			if err != nil {
+				return err
+			}
+			os.Setenv("PGSSLMODE", originalEnv)
+			currentDDLs, err = targetDB.DumpDDLs()
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("failed dump target db ddls:%w", err)
+		}
 	}
 
 	ddls, err := schema.GenerateIdempotentDDLs(schema.GeneratorModePostgres, m.parser, desiredDDLs, currentDDLs, database.GeneratorConfig{})
