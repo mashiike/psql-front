@@ -1,0 +1,33 @@
+required_version: ">=v0.0.0"
+
+cache_database:
+  host: "{{ env `POSTGRES_HOST` `localhost` }}"
+  username: "{{ env `PSOTGRES_USER` `postgres` }}"
+  password: "{{ env `PSOTGRES_PASSWORD` `postgres` }}"
+  port: 5432
+  database: "postgres"
+
+default_ttl: 24h
+
+certificates:
+  - cert: server.crt
+    key: server.key
+
+origins:
+  - id: open_data
+    type: HTTP
+    schema: public
+    tables:
+      - name: syukujitsu
+        url: https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv
+        format: csv
+        ignore_lines: 1
+        text_encoding: Shift_JIS
+        columns:
+          - name: ymd
+            data_type: DATE
+            constraint: NOT NULL
+          - name: name
+            data_type: VARCHAR
+            length: 64
+            constraint: NOT NULL

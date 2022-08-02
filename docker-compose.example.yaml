@@ -1,0 +1,40 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: pg_isready -q -d 'postgres' -U postgres
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app
+
+  psql-front:
+    image: ghcr.io/mashiike/psql-front:latest
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./testdata/certificate/server.crt:/server.crt
+      - ./testdata/certificate/server.key:/server.key
+      - ./testdata/config/example.yaml:/config.yaml
+    command: psql-front --config config.yaml
+    ports:
+      - 5434:5434
+    networks:
+      - app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  app:
+    driver: bridge

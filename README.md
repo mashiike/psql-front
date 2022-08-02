@@ -19,9 +19,9 @@ config.yaml
 required_version: ">=v0.0.0"
 
 cache_database:
-  host: "{{ env `PSOTGRES_DB_HOST` `localhost` }}"
-  username: "{{ env `PSOTGRES_DB_USER` `postgres` }}"
-  password: "{{ env `PSOTGRES_DB_PASSWORD` `postgres` }}"
+  host: "{{ env `POSTGRES_HOST` `localhost` }}"
+  username: "{{ env `PSOTGRES_USER` `postgres` }}"
+  password: "{{ env `PSOTGRES_PASSWORD` `postgres` }}"
   port: 5432
   database: "postgres"
 
@@ -49,7 +49,6 @@ origins:
             data_type: VARCHAR
             length: 64
             constraint: NOT NULL
-
 ```
 
 Start with this config.yaml as follows
