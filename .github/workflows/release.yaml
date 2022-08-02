@@ -10,6 +10,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    env:
+      BIN_NAME: psql-front
     steps:
       - name: Set up Go
         uses: actions/setup-go@v3
@@ -18,6 +20,30 @@ jobs:
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v3
+        name: Build
+        uses: crazy-max/ghaction-xgo@v2
+        with:
+          xgo_version: latest
+          go_version: 1.18
+          dest: build
+          prefix: ${{ env.BIN_NAME }}
+          targets: windows/amd64,darwin/amd64,linux/amd64,linux/arm64,darwin/arm64
+          v: true
+          x: false
+          race: false
+          ldflags: -s -w -X main.version=${{ steps.set-tag.outputs.version }}
+          buildmode: default
+          trimpath: true
+      - name: Zip binaries
+        run: |
+          cd build
+          for file in ./* ; do
+            mkdir $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}') &&
+            cp ${file} $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} &&
+            zip $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').zip -j $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} ../README.md ../LICENSE;
+          done
+          shasum -a 256 *.zip > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
+          ls -lR ./
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
