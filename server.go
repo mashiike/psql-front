@@ -66,11 +66,7 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		log.Println("[info] use TLS")
 		certs := make([]tls.Certificate, 0, len(cfg.Certificates))
 		for _, certCfg := range cfg.Certificates {
-			cert, err := tls.LoadX509KeyPair(certCfg.Cert, certCfg.Key)
-			if err != nil {
-				return nil, err
-			}
-			certs = append(certs, cert)
+			certs = append(certs, certCfg.certificate)
 		}
 		server.tlsConfig = &tls.Config{
 			Certificates: certs,

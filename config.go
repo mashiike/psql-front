@@ -1,13 +1,23 @@
 package psqlfront
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"cloud.google.com/go/storage"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	gv "github.com/hashicorp/go-version"
 	gc "github.com/kayac/go-config"
 )
@@ -20,7 +30,6 @@ type Config struct {
 	DefaultTTL    time.Duration         `yaml:"default_ttl,omitempty"`
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
-	configDir          string         `yaml:"-"`
 	versionConstraints gv.Constraints `yaml:"-"`
 }
 
@@ -40,10 +49,14 @@ func DefaultConfig() *Config {
 
 // Load loads configuration file from file paths.
 func (cfg *Config) Load(path string) error {
-	if err := gc.LoadWithEnv(cfg, path); err != nil {
+	src, err := loadSrcFrom(path)
+	if err != nil {
 		return err
 	}
-	cfg.configDir = filepath.Dir(path)
+	err = gc.LoadWithEnvBytes(cfg, src)
+	if err != nil {
+		return err
+	}
 	return cfg.Restrict()
 }
 
@@ -57,18 +70,19 @@ func (cfg *Config) Restrict() error {
 	}
 
 	for i, certCfg := range cfg.Certificates {
-		if !isExists(certCfg.Cert) {
-			certCfg.Cert = filepath.Join(cfg.configDir, certCfg.Cert)
-			if !isExists(certCfg.Cert) {
-				return fmt.Errorf("certificates[%d]: cert file not found", i)
-			}
+		certPEMBlock, err := loadSrcFrom(certCfg.Cert)
+		if err != nil {
+			return fmt.Errorf("certificates[%d]: cert can not load:%w", i, err)
 		}
-		if !isExists(certCfg.Key) {
-			certCfg.Key = filepath.Join(cfg.configDir, certCfg.Key)
-			if !isExists(certCfg.Key) {
-				return fmt.Errorf("certificates[%d]: key file not found", i)
-			}
+		keyPEMBlock, err := loadSrcFrom(certCfg.Key)
+		if err != nil {
+			return fmt.Errorf("certificates[%d]: key can not load:%w", i, err)
 		}
+		certificate, err := tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+		if err != nil {
+			return err
+		}
+		cfg.Certificates[i].certificate = certificate
 	}
 
 	for i, originCfg := range cfg.Origins {
@@ -128,9 +142,88 @@ func (cfg *CacheDatabaseConfig) DSN() string {
 type CertificateConfig struct {
 	Cert string `yaml:"cert,omitempty"`
 	Key  string `yaml:"key,omitempty"`
+
+	certificate tls.Certificate
 }
 
 func isExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func loadSrcFrom(path string) ([]byte, error) {
+	u, err := url.Parse(path)
+	if err != nil {
+		// not a URL. load as a file path
+		return ioutil.ReadFile(path)
+	}
+	switch u.Scheme {
+	case "http", "https":
+		return fetchHTTP(u)
+	case "s3":
+		return fetchS3(u)
+	case "gcs":
+		return fetchGCS(u)
+	case "file", "":
+		return ioutil.ReadFile(u.Path)
+	default:
+		return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
+	}
+}
+
+func fetchHTTP(u *url.URL) ([]byte, error) {
+	log.Println("[info] fetching from", u)
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
+
+func fetchS3(u *url.URL) ([]byte, error) {
+	log.Println("[info] fetching from", u)
+	ctx := context.Background()
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load default aws config, %w", err)
+	}
+	client := s3.NewFromConfig(awsCfg)
+	bucket := u.Host
+	key := strings.TrimLeft(u.Path, "/")
+	headObject, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to head object from S3, %w", err)
+	}
+	buf := make([]byte, int(headObject.ContentLength))
+	w := manager.NewWriteAtBuffer(buf)
+	downloader := manager.NewDownloader(client)
+	_, err = downloader.Download(ctx, w, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch from S3, %s", err)
+	}
+	return buf, nil
+}
+
+func fetchGCS(u *url.URL) ([]byte, error) {
+	log.Println("[info] fetching from", u)
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load default gcp config, %w", err)
+	}
+
+	obj := client.Bucket(u.Host).Object(strings.TrimLeft(u.Path, "/"))
+	reader, err := obj.NewReader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create reader, %w", err)
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
 }
