@@ -8,12 +8,3 @@ release:
   extra_files:
     - glob: "build/*.zip"
     - glob: "build/*_checksums.txt"
-archives:
-snapshot:
-  name_template: "{{ .Env.NIGHTLY_VERSION }}"
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
