@@ -3,6 +3,8 @@ package psqlfront
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +20,8 @@ type Config struct {
 	DefaultTTL    time.Duration         `yaml:"default_ttl,omitempty"`
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
-	versionConstraints gv.Constraints `yaml:"version_constraints,omitempty"`
+	configDir          string         `yaml:"-"`
+	versionConstraints gv.Constraints `yaml:"-"`
 }
 
 func DefaultConfig() *Config {
@@ -36,11 +39,12 @@ func DefaultConfig() *Config {
 }
 
 // Load loads configuration file from file paths.
-func (c *Config) Load(path string) error {
-	if err := gc.LoadWithEnv(c, path); err != nil {
+func (cfg *Config) Load(path string) error {
+	if err := gc.LoadWithEnv(cfg, path); err != nil {
 		return err
 	}
-	return c.Restrict()
+	cfg.configDir = filepath.Dir(path)
+	return cfg.Restrict()
 }
 
 func (cfg *Config) Restrict() error {
@@ -50,6 +54,21 @@ func (cfg *Config) Restrict() error {
 			return fmt.Errorf("required_version has invalid format: %w", err)
 		}
 		cfg.versionConstraints = constraints
+	}
+
+	for i, certCfg := range cfg.Certificates {
+		if !isExists(certCfg.Cert) {
+			certCfg.Cert = filepath.Join(cfg.configDir, certCfg.Cert)
+			if !isExists(certCfg.Cert) {
+				return fmt.Errorf("certificates[%d]: cert file not found", i)
+			}
+		}
+		if !isExists(certCfg.Key) {
+			certCfg.Key = filepath.Join(cfg.configDir, certCfg.Key)
+			if !isExists(certCfg.Key) {
+				return fmt.Errorf("certificates[%d]: key file not found", i)
+			}
+		}
 	}
 
 	for i, originCfg := range cfg.Origins {
@@ -109,4 +128,9 @@ func (cfg *CacheDatabaseConfig) DSN() string {
 type CertificateConfig struct {
 	Cert string `yaml:"cert,omitempty"`
 	Key  string `yaml:"key,omitempty"`
+}
+
+func isExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
