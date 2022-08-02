@@ -36,9 +36,9 @@ func (t *Table) GenerateDDL() (string, error) {
 	}
 	for _, column := range t.Columns {
 		if column.Length != nil && *column.Length > 0 {
-			fields = append(fields, strings.Join([]string{column.Name, fmt.Sprintf("%s(%d)", column.DataType, *column.Length), column.Contraint}, " "))
+			fields = append(fields, strings.Join([]string{`"` + column.Name + `"`, fmt.Sprintf("%s(%d)", column.DataType, *column.Length), column.Contraint}, " "))
 		} else {
-			fields = append(fields, strings.Join([]string{column.Name, column.DataType, column.Contraint}, " "))
+			fields = append(fields, strings.Join([]string{`"` + column.Name + `"`, column.DataType, column.Contraint}, " "))
 		}
 	}
 	return fmt.Sprintf("CREATE TABLE %s (\n    %s\n);", t, strings.Join(fields, ",\n    ")), nil

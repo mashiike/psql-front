@@ -13,6 +13,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/fujiwara/logutils"
 	psqlfront "github.com/mashiike/psql-front"
+	_ "github.com/mashiike/psql-front/origin/http"
 	_ "github.com/mashiike/psql-front/origin/static"
 )
 

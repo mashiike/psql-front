@@ -13,9 +13,11 @@ require (
 	github.com/k0kubun/sqldef v0.12.7
 	github.com/kayac/go-config v0.6.0
 	github.com/lestrrat-go/backoff/v2 v2.0.8
+	github.com/mattn/go-encoding v0.0.2
 	github.com/pganalyze/pg_query_go/v2 v2.1.2
 	github.com/samber/lo v1.27.0
 	github.com/stretchr/testify v1.7.1
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	gopkg.in/yaml.v3 v3.0.1
 )
