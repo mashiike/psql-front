@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/fujiwara/logutils"
+	"github.com/ken39arg/go-flagx"
 	psqlfront "github.com/mashiike/psql-front"
 	_ "github.com/mashiike/psql-front/origin/http"
 	_ "github.com/mashiike/psql-front/origin/static"
@@ -48,6 +49,7 @@ func main() {
 	flag.StringVar(&minLevel, "log-level", "info", "log level")
 	flag.StringVar(&config, "config", "", "psql-front config")
 	flag.Uint64Var(&port, "port", 5434, "psql-front port")
+	flag.VisitAll(flagx.EnvToFlagWithPrefix("PSQL_FRONT_"))
 	flag.Parse()
 	filter.SetMinLevel(logutils.LogLevel(strings.ToLower(minLevel)))
 
