@@ -30,7 +30,7 @@ jobs:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: build
           path: build/psql-front_*
@@ -53,7 +53,7 @@ jobs:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: build
           path: build/psql-front_*
@@ -66,12 +66,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: load build
-        uses: actions/download-artifact@v2
+        id: load_build
+        uses: actions/download-artifact@v3
         with:
           name: build
+          path: build
       - name: Zip binaries
         run: |
-          cd build
+          cd ${{steps.load_build.outputs.download-path}}
           for file in ./* ; do
             mkdir $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}') &&
             cp ${file} $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} &&
