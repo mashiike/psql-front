@@ -35,7 +35,32 @@ jobs:
         with:
           name: build
           path: build/psql-front_*
+  build-macos-bin:
+    strategy:
+      matrix:
+        GOARCH: ['amd64', 'arm64']
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.18
+      - name: build bin
+        run: |
+          mkdir -p build
+          go build -o build/psql-front_darwin_$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+        env:
+          GIT_VER: ${{ github.ref }}
+          GOARCH: ${{ matrix.GOARCH }}
+          CGO_ENABLED: 1
+        shell: bash
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: build/psql-front_*
   release-bin:
+    needs: [build-linux-bin, build-macos-bin]
     runs-on: ubuntu-latest
     env:
       BIN_NAME: psql-front
