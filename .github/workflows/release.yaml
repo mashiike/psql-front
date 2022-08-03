@@ -11,6 +11,58 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  build-linux-bin:
+    strategy:
+      matrix:
+        GOARCH: ['amd64', 'arm64']
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.18
+      - name: build bin
+        run: |
+          mkdir -p build
+          go build -o build/psql-front_linux_$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+        env:
+          GIT_VER: ${{ github.ref }}
+          GOARCH: ${{ matrix.GOARCH }}
+          CGO_ENABLED: 1
+        shell: bash
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: build/psql-front_*
+  release-bin:
+    runs-on: ubuntu-latest
+    env:
+      BIN_NAME: psql-front
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: load build
+        uses: actions/download-artifact@v2
+        with:
+          name: build
+      - name: Zip binaries
+        run: |
+          cd build
+          for file in ./* ; do
+            mkdir $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}') &&
+            cp ${file} $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} &&
+            zip $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').zip -j $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} ../README.md ../LICENSE;
+          done
+          shasum -a 256 *.zip > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
+          ls -lR ./
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v3
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
