@@ -25,7 +25,7 @@ jobs:
       - name: build bin
         run: |
           mkdir -p build
-          go build -o build/psql-front_linux_$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+          go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
         env:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: build
-          path: build/psql-front_*
+          path: build/psql-front-*
   build-macos-bin:
     strategy:
       matrix:
@@ -48,7 +48,7 @@ jobs:
       - name: build bin
         run: |
           mkdir -p build
-          go build -o build/psql-front_darwin_$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+          go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
         env:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: build
-          path: build/psql-front_*
+          path: build/psql-front-*
   release-bin:
     needs: [build-linux-bin, build-macos-bin]
     runs-on: ubuntu-latest
@@ -77,7 +77,9 @@ jobs:
           for file in ./* ; do
             mkdir $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}') &&
             cp ${file} $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} &&
-            zip $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').zip -j $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} ../README.md ../LICENSE;
+            cp ../README.md $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/ &&
+            cp ../LICENSE $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/ &&
+            tar -zcvf $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').tar.gz $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')
           done
           shasum -a 256 *.zip > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
           ls -lR ./

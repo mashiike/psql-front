@@ -1,0 +1,10 @@
+# This is an example goreleaser.yaml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
+builds:
+  - binary: psql-front
+    skip: true
+release:
+  prerelease: true
+  extra_files:
+    - glob: "build/*.tar.gz"
+    - glob: "build/*_checksums.txt"
