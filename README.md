@@ -51,36 +51,14 @@ origins:
             constraint: NOT NULL
 ```
 
-Start with this config.yaml as follows
+You can try to set up an example using this config.yaml by using docker-compose.example.yaml.
+
 ```shell
-$ docker compose up -d
-[+] Running 2/2
- ⠿ Network psql-front_default       Created                 0.1s
- ⠿ Container psql-front-postgres-1  Started                 0.9s
-
-$ psql-front --config config.yaml
-2022/08/02 12:28:20 [info] load origin type: HTTP
-2022/08/02 12:28:20 [info] load origin type: Static
-2022/08/02 12:28:20 [info] use TLS
-2022/08/02 12:28:20 [info] need execute migration
--- Apply --
-CREATE SCHEMA IF NOT EXISTS "psqlfront";
-CREATE SCHEMA IF NOT EXISTS "public";
-
-CREATE TABLE "psqlfront"."cache" (
-    schema_name VARCHAR(255) NOT NULL,
-    table_name VARCHAR(255) NOT NULL,
-    origin_id VARCHAR(255) NOT NULL,
-    cached_at TIMESTAMP NOT NULL,
-    expired_at TIMESTAMP NOT NULL,
-    PRIMARY KEY(schema_name,table_name)
-);
-CREATE TABLE "public"."syukujitsu" (
-    "ymd" DATE ,
-    "name" VARCHAR(64) 
-);
-2022/08/02 12:28:20 [info][-] execute: ANALYZE "public"."syukujitsu";
-2022/08/02 12:28:20 [info] PostgreSQL server is up and running at [[::]:5434]
+$ docker compose -f docker-compose.example.yaml up
+[+] Running 3/3
+ ⠿ Network psql-front_app             Created 0.1s
+ ⠿ Container psql-front-postgres-1    Created 0.1s
+ ⠿ Container psql-front-psql-front-1  Created 0.1s
 ```
 
 Access with psql client in this state.
@@ -107,6 +85,14 @@ postgres=#
 #### Binary packages
 
 [Releases](https://github.com/mashiike/psql-front/releases)
+
+#### Docker
+
+[GitHub Packages](https://github.com/users/mashiike/packages/container/package/psql-front)
+
+```console
+$ docker pull ghcr.io/mashiike/psql-front:latest
+```
 
 
 ### Options

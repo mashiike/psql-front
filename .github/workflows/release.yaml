@@ -71,7 +71,7 @@ jobs:
         with:
           name: build
           path: build
-      - name: Zip binaries
+      - name: archive binaries
         run: |
           cd ${{steps.load_build.outputs.download-path}}
           for file in ./* ; do
