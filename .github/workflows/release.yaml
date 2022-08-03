@@ -81,7 +81,7 @@ jobs:
             cp ../LICENSE $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/ &&
             tar -zcvf $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').tar.gz $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')
           done
-          shasum -a 256 *.zip > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
+          shasum -a 256 *.tar.gz > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
           ls -lR ./
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
