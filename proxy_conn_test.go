@@ -3,6 +3,7 @@ package psqlfront_test
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -15,14 +16,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProxyConn(t *testing.T) {
+type proxyConnTestCase struct {
+	CertFile            string
+	KeyFile             string
+	TestFunc            func(t *testing.T, ctx context.Context, addr string, conn *pgx.Conn)
+	OnReceived          psqlfront.ProxyConnOnQueryReceivedHandlerFunc
+	PrepareProxyConn    func(t *testing.T, pconn *psqlfront.ProxyConn)
+	ProxyConnErrorCheck func(t *testing.T, err error)
+}
+
+func (c *proxyConnTestCase) Run(t *testing.T) {
 	cfg := preparePSQL(t)
-	cert, err := tls.LoadX509KeyPair("./testdata/certificate/server.crt", "./testdata/certificate/server.key")
-	require.NoError(t, err)
+	proxyOptFns := make([]func(*psqlfront.ProxyConnOptions), 0)
+	if c.OnReceived != nil {
+		proxyOptFns = append(proxyOptFns, psqlfront.WithProxyConnOnQueryReceived(c.OnReceived))
+	}
+	if c.CertFile != "" && c.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		require.NoError(t, err)
+		proxyOptFns = append(proxyOptFns, psqlfront.WithProxyConnTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}))
+	}
 	listener, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
-
-	var actual string
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -42,19 +59,17 @@ func TestProxyConn(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				conn, err := psqlfront.NewProxyConn(
-					client, upstream,
-					psqlfront.WithProxyConnTLS(&tls.Config{
-						Certificates: []tls.Certificate{cert},
-					}),
-					psqlfront.WithProxyConnOnQueryReceived(func(_ context.Context, query string, _ bool, _ psqlfront.Notifier) error {
-						actual = query
-						return nil
-					}),
-				)
+				conn, err := psqlfront.NewProxyConn(client, upstream, proxyOptFns...)
 				require.NoError(t, err)
+				if c.PrepareProxyConn != nil {
+					c.PrepareProxyConn(t, conn)
+				}
 				err = conn.Run(ctx)
-				require.NoError(t, err)
+				if c.ProxyConnErrorCheck != nil {
+					c.ProxyConnErrorCheck(t, err)
+				} else {
+					require.NoError(t, err)
+				}
 			}()
 		}
 	}()
@@ -87,20 +102,63 @@ func TestProxyConn(t *testing.T) {
 	if !ok {
 		t.Fatal(err)
 	}
-	expected := "SELECT * FROM pg_tables LIMIT $1"
-	rows, err := conn.Query(ctx, expected, 1)
-	require.NoError(t, err)
-	values := make([][]interface{}, 0, 1)
-	for rows.Next() {
-		v, err := rows.Values()
-		require.NoError(t, err)
-		values = append(values, v)
-	}
-	t.Log(values)
-	rows.Close()
-	require.EqualValues(t, expected, actual)
-	require.Equal(t, 1, len(values))
+
+	c.TestFunc(t, ctx, listener.Addr().String(), conn)
+
+	conn.Close(ctx)
 	cancel()
 	listener.Close()
 	wg.Wait()
+}
+
+func TestProxyConn(t *testing.T) {
+	var actual string
+	c := &proxyConnTestCase{
+		CertFile: "./testdata/certificate/server.crt",
+		KeyFile:  "./testdata/certificate/server.key",
+		OnReceived: func(_ context.Context, query string, _ bool, _ psqlfront.Notifier) error {
+			actual = query
+			return nil
+		},
+		TestFunc: func(t *testing.T, ctx context.Context, addr string, conn *pgx.Conn) {
+			expected := "SELECT * FROM pg_tables LIMIT $1"
+			rows, err := conn.Query(ctx, expected, 1)
+			require.NoError(t, err)
+			values := make([][]interface{}, 0, 1)
+			for rows.Next() {
+				v, err := rows.Values()
+				require.NoError(t, err)
+				values = append(values, v)
+			}
+			t.Log(values)
+			rows.Close()
+			require.EqualValues(t, expected, actual)
+			require.Equal(t, 1, len(values))
+		},
+	}
+	c.Run(t)
+}
+
+func TestProxyConnIdleTimeout(t *testing.T) {
+	c := &proxyConnTestCase{
+		CertFile: "./testdata/certificate/server.crt",
+		KeyFile:  "./testdata/certificate/server.key",
+		PrepareProxyConn: func(t *testing.T, pconn *psqlfront.ProxyConn) {
+			pconn.SetIdleTimeout(500 * time.Millisecond)
+		},
+		TestFunc: func(t *testing.T, ctx context.Context, addr string, conn *pgx.Conn) {
+			_, err := conn.Exec(ctx, "SELECT 1;")
+			require.NoError(t, err)
+			time.Sleep(2 * time.Second)
+			_, err = conn.Exec(ctx, "SELECT 1;")
+			require.Error(t, err)
+		},
+		ProxyConnErrorCheck: func(t *testing.T, err error) {
+			require.Error(t, err)
+			var oe *net.OpError
+			require.True(t, errors.As(err, &oe))
+			require.True(t, oe.Timeout())
+		},
+	}
+	c.Run(t)
 }

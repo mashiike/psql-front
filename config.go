@@ -29,7 +29,13 @@ type Config struct {
 	DefaultTTL    time.Duration         `yaml:"default_ttl,omitempty"`
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
-	versionConstraints gv.Constraints `yaml:"-"`
+	IdleTimeout *time.Duration `yaml:"idle_timeout,omitempty"`
+
+	versionConstraints gv.Constraints `yaml:"-,omitempty"`
+}
+
+func PtrValue[T any](t T) *T {
+	return &t
 }
 
 func DefaultConfig() *Config {
@@ -42,7 +48,8 @@ func DefaultConfig() *Config {
 			Database: "postgres",
 			SSLMode:  "prefer",
 		},
-		DefaultTTL: 24 * time.Hour,
+		DefaultTTL:  24 * time.Hour,
+		IdleTimeout: PtrValue(600 * time.Second),
 	}
 }
 

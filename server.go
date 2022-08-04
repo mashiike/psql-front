@@ -41,6 +41,7 @@ type Server struct {
 	tables           map[string]*Table
 	migrator         *Migrator
 	tlsConfig        *tls.Config
+	idleTimeout      time.Duration
 	upstreamAddr     string
 }
 
@@ -61,6 +62,9 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		tables:           make(map[string]*Table),
 		migrator:         NewMigrator(cfg.CacheDatabase),
 		upstreamAddr:     fmt.Sprintf("%s:%d", cfg.CacheDatabase.Host, cfg.CacheDatabase.Port),
+	}
+	if cfg.IdleTimeout != nil {
+		server.idleTimeout = *cfg.IdleTimeout
 	}
 	if len(cfg.Certificates) > 0 {
 		log.Println("[info] use TLS")
@@ -159,28 +163,41 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 				upstream, err := net.Dial("tcp", server.upstreamAddr)
 				if err != nil {
 					log.Printf("[error][%s] can not connect upstream:%v", remoteAddr, err)
+					client.Close()
 					continue
 				}
 				conn, err := NewProxyConn(client, upstream, opts...)
 				if err != nil {
 					log.Printf("[error][%s] can create proxy conn:%v", remoteAddr, err)
+					client.Close()
 					upstream.Close()
 					continue
 				}
+				conn.SetIdleTimeout(server.idleTimeout)
 				wg.Add(1)
 				go func() {
-					defer wg.Done()
+					defer func() {
+						log.Printf("[info][%s] close connection", remoteAddr)
+						wg.Done()
+					}()
 					if err := conn.Run(withRemoteAddr(cctx, remoteAddr)); err != nil {
+						var oe *net.OpError
+						if errors.As(err, &oe) {
+							if oe.Timeout() {
+								log.Printf("[warn][%s] run proxy conn:%v", remoteAddr, err)
+								return
+							}
+						}
 						log.Printf("[error][%s] run proxy conn:%v", remoteAddr, err)
 					}
-					log.Printf("[info][%s] close connection", remoteAddr)
+
 				}()
 			}
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("[info] shutdown...")
+	log.Println("[info] psql-front shutdown...")
 	cancel()
 	listener.Close()
 	wg.Wait()
