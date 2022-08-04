@@ -94,7 +94,6 @@ postgres=#
 $ docker pull ghcr.io/mashiike/psql-front:latest
 ```
 
-
 ### Options
 
 ```shell
@@ -107,6 +106,49 @@ Version: v0.0.0
         log level (default "info")
   -port uint
         psql-front port (default 5434)
+```
+
+### Monitoring
+
+You can configure settings related to Stats monitoring in the configuration file.
+
+```yaml
+required_version: ">= v0.1.0"
+
+cache_database:
+  host: "localhost"
+  username: "postgres"
+  password: "{{ env `PSOTGRES_DB_PASSWORD` `postgres` }}"
+  port: 5432
+  database: "postgres"
+  ssl_mode: "{{ env `PSOTGRES_SSLMODE` `prefer` }}"
+
+
+stats:
+  enable: true
+  monitoring_interval: 30s # Interval at which stats are collected
+  store_database: true # If true, output to psqlfront.stats in the cache database.
+```
+
+If `stats.store_database` is true, the cache database can be accessed and aggregated.
+
+```shell
+$ psql -h localhost -U postgres -p 5432
+Password for user postgres: 
+psql (14.2, server 14.4)
+Type "help" for help.
+
+postgres=# select * from psqlfront.stats;
+   hostname   | pid | uptime |        time         | version | curr_connections | total_connections | queries | cache_hits | cache_misses | memory_alloc 
+--------------+-----+--------+---------------------+---------+------------------+-------------------+---------+------------+--------------+--------------
+ d11d18ed9af7 |   1 |     30 | 2022-08-04 16:27:54 |  v0.1.0 |               10 |                12 |    4250 |        348 |            4 |      7428576
+ d11d18ed9af7 |   1 |     60 | 2022-08-04 16:28:24 |  v0.1.0 |               10 |                12 |   12510 |       1036 |            4 |      9275328
+ d11d18ed9af7 |   1 |     90 | 2022-08-04 16:28:54 |  v0.1.0 |               10 |                12 |   20679 |       1719 |            4 |      8571120
+ d11d18ed9af7 |   1 |    120 | 2022-08-04 16:29:24 |  v0.1.0 |               10 |                12 |   27544 |       2289 |            4 |      6078544
+ d11d18ed9af7 |   1 |    150 | 2022-08-04 16:29:54 |  v0.1.0 |               10 |                12 |   34749 |       2890 |            4 |      6225504
+ d11d18ed9af7 |   1 |    180 | 2022-08-04 16:30:23 |  v0.1.0 |               10 |                12 |   41841 |       3481 |            4 |      6345872
+ d11d18ed9af7 |   1 |    210 | 2022-08-04 16:30:53 |  v0.1.0 |               10 |                12 |   50436 |       4197 |            4 |      7655392
+ 750020e74b36 |   1 |     30 | 2022-08-04 16:41:42 |  v0.1.0 |                0 |                 0 |       0 |          0 |            0 |      4993256
 ```
 
 ## LICENSE
