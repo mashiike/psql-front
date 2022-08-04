@@ -217,12 +217,12 @@ func (server *Server) handleQuery(ctx context.Context, query string, isPrepareSt
 		log.Printf("[debug][%s] analyze SQL failed: %v", remoteAddr, err)
 		return err
 	}
-	log.Printf("[info][%s] referenced tables: [%s]", remoteAddr, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
-		return table.String()
-	}), ", "))
 	if len(tables) == 0 {
 		return nil
 	}
+	log.Printf("[info][%s] referenced tables: [%s]", remoteAddr, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
+		return table.String()
+	}), ", "))
 	if err := server.controlCache(ctx, query, tables, notifier); err != nil {
 		return fmt.Errorf("control cache failed: %w", err)
 	}

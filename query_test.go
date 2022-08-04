@@ -1,6 +1,8 @@
 package psqlfront_test
 
 import (
+	"io"
+	"log"
 	"testing"
 
 	psqlfront "github.com/mashiike/psql-front"
@@ -65,4 +67,19 @@ func TestAnalyzeQuery(t *testing.T) {
 			require.ElementsMatch(t, c.tables, tables)
 		})
 	}
+}
+
+func BenchmarkAnalyzeQuery(b *testing.B) {
+	original := log.Default().Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(original)
+	query := LoadFile(b, "testdata/sql/declare_cursor.sql")
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := psqlfront.AnalyzeQuery(query)
+			require.NoError(b, err)
+		}
+	})
 }

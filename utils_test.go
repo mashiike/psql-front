@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func LoadFile(t *testing.T, path string) string {
+func LoadFile(t testing.TB, path string) string {
 	t.Helper()
 	require.FileExists(t, path)
 	fp, err := os.Open(path)
