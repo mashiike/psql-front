@@ -25,7 +25,7 @@ jobs:
       - name: build bin
         run: |
           mkdir -p build
-          go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+          go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/main.go
         env:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
@@ -48,7 +48,7 @@ jobs:
       - name: build bin
         run: |
           mkdir -p build
-          go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X main.Version=$GIT_VER" cmd/psql-front/main.go
+          go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/main.go
         env:
           GIT_VER: ${{ github.ref }}
           GOARCH: ${{ matrix.GOARCH }}
