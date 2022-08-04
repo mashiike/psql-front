@@ -30,6 +30,7 @@ type Config struct {
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
 	IdleTimeout *time.Duration `yaml:"idle_timeout,omitempty"`
+	Stats       *StatsConfig   `yaml:"stats,omitempty"`
 
 	versionConstraints gv.Constraints `yaml:"-,omitempty"`
 }
@@ -48,7 +49,11 @@ func DefaultConfig() *Config {
 			Database: "postgres",
 			SSLMode:  "prefer",
 		},
-		DefaultTTL:  24 * time.Hour,
+		DefaultTTL: 24 * time.Hour,
+		Stats: &StatsConfig{
+			Enabled:            PtrValue(true),
+			MonitoringInterval: 30 * time.Second,
+		},
 		IdleTimeout: PtrValue(600 * time.Second),
 	}
 }
@@ -102,6 +107,22 @@ func (cfg *Config) Restrict() error {
 			return fmt.Errorf("origins[%d]:%w", i, err)
 		}
 	}
+	if cfg.Stats == nil {
+		cfg.Stats = &StatsConfig{
+			Enabled: PtrValue(false),
+		}
+	}
+	if cfg.Stats.MonitoringInterval == 0 {
+		cfg.Stats.Enabled = PtrValue(false)
+	}
+	if cfg.Stats.Enabled == nil {
+		cfg.Stats.Enabled = PtrValue(cfg.Stats.MonitoringInterval >= 1*time.Second)
+	}
+	if cfg.Stats.MonitoringInterval >= 24*time.Hour {
+		log.Println("[warn] stats.monitoring_interval can not set over 24 hours")
+		cfg.Stats.MonitoringInterval = 24 * time.Hour
+
+	}
 	return cfg.validateVersion(Version)
 }
 
@@ -146,6 +167,22 @@ func (cfg *CacheDatabaseConfig) DSN() string {
 		dsn += fmt.Sprintf("?sslmode=%s", cfg.SSLMode)
 	}
 	return dsn
+}
+
+type StatsConfig struct {
+	Enabled            *bool         `yaml:"enabled,omitempty"`
+	MonitoringInterval time.Duration `yaml:"monitoring_interval,omitempty"`
+	StoreDatabase      bool          `yaml:"store_database,omitempty"`
+}
+
+func (cfg *StatsConfig) enabled() bool {
+	if cfg == nil {
+		return false
+	}
+	if cfg.Enabled == nil {
+		return false
+	}
+	return *cfg.Enabled
 }
 
 type CertificateConfig struct {

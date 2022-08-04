@@ -1,0 +1,15 @@
+required_version: ">= v0.0.0"
+
+cache_database:
+  host: "localhost"
+  username: "postgres"
+  password: "{{ env `PSOTGRES_DB_PASSWORD` `postgres` }}"
+  port: 5432
+  database: "postgres"
+  ssl_mode: "{{ env `PSOTGRES_SSLMODE` `prefer` }}"
+
+default_ttl: 86400s
+
+stats:
+  enable: true
+  monitoring_interval: 0

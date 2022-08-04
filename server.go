@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -47,6 +48,16 @@ type Server struct {
 	tlsConfig        *tls.Config
 	idleTimeout      time.Duration
 	upstreamAddr     string
+	statsCfg         *StatsConfig
+
+	startedAt time.Time
+
+	// stats values are mesure atomically
+	currConnections  int64
+	totalConnections int64
+	queries          int64
+	cacheHits        int64
+	cacheMisses      int64
 }
 
 func New(ctx context.Context, cfg *Config) (*Server, error) {
@@ -66,6 +77,7 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		tables:           make(map[string]*Table),
 		migrator:         NewMigrator(cfg.CacheDatabase),
 		upstreamAddr:     fmt.Sprintf("%s:%d", cfg.CacheDatabase.Host, cfg.CacheDatabase.Port),
+		statsCfg:         cfg.Stats,
 	}
 	if cfg.IdleTimeout != nil {
 		server.idleTimeout = *cfg.IdleTimeout
@@ -117,6 +129,7 @@ func GetRemoteAddr(ctx context.Context) string {
 
 func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
 	log.Printf("[notice] start psql-front running version: %s", Version)
+	server.startedAt = flextime.Now()
 	defer listener.Close()
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {
@@ -148,6 +161,11 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
+	if server.statsCfg.enabled() {
+		wg.Add(1)
+		go server.monitoring(cctx, &wg)
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -163,12 +181,15 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 					log.Printf("[error] Listener accept: %v", err)
 				}
 			} else {
+				atomic.AddInt64(&(server.totalConnections), 1)
+				atomic.AddInt64(&(server.currConnections), 1)
 				remoteAddr := client.RemoteAddr().String()
 				log.Printf("[notice][%s] new connection", remoteAddr)
 				upstream, err := net.Dial("tcp", server.upstreamAddr)
 				if err != nil {
 					log.Printf("[error][%s] can not connect upstream:%v", remoteAddr, err)
 					client.Close()
+					atomic.AddInt64(&(server.currConnections), -1)
 					continue
 				}
 				conn, err := NewProxyConn(client, upstream, opts...)
@@ -176,6 +197,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 					log.Printf("[error][%s] can create proxy conn:%v", remoteAddr, err)
 					client.Close()
 					upstream.Close()
+					atomic.AddInt64(&(server.currConnections), -1)
 					continue
 				}
 				conn.SetIdleTimeout(server.idleTimeout)
@@ -183,6 +205,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 				go func() {
 					defer func() {
 						log.Printf("[notice][%s] close connection", remoteAddr)
+						atomic.AddInt64(&(server.currConnections), -1)
 						wg.Done()
 					}()
 					if err := conn.Run(withRemoteAddr(cctx, remoteAddr)); err != nil {
@@ -210,6 +233,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 }
 
 func (server *Server) handleQuery(ctx context.Context, query string, isPrepareStmt bool, notifier Notifier) error {
+	atomic.AddInt64(&(server.queries), 1)
 	remoteAddr := GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] analyze SQL: %s", remoteAddr, query)
 	tables, err := AnalyzeQuery(query)
@@ -234,6 +258,11 @@ var cacheLifecycleTable = &Table{
 	RelName:    "cache",
 }
 
+var statsTable = &Table{
+	SchemaName: "psqlfront",
+	RelName:    "stats",
+}
+
 func (server *Server) analezeTables(ctx context.Context, tables []*Table) error {
 	remoteAddr := GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] try analyze table", remoteAddr)
@@ -253,7 +282,7 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 	log.Printf("[debug][%s] try cache control SQL: %s", remoteAddr, query)
 	tables := make([]*Table, 0, len(refarencedTables))
 	for _, table := range refarencedTables {
-		if table.String() == cacheLifecycleTable.String() {
+		if table.String() == cacheLifecycleTable.String() || table.String() == statsTable.String() {
 			continue
 		}
 		if table.SchemaName == "pg_catalog" || table.SchemaName == "information_schema" {
@@ -290,6 +319,8 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 				}), ", ")),
 			})
 		}
+		atomic.AddInt64(&(server.cacheHits), int64(len(hitTables)))
+		atomic.AddInt64(&(server.cacheMisses), int64(len(noHitTables)))
 	}()
 	if len(noHitTables) == 0 {
 		log.Printf("[info][%s] all tables cache hit", remoteAddr)

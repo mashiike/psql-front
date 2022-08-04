@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/storage v1.24.0
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/Songmu/flextime v0.1.0
+	github.com/Songmu/go-ltsv v0.1.0
 	github.com/aws/aws-sdk-go-v2 v1.16.8
 	github.com/aws/aws-sdk-go-v2/config v1.15.15
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.21

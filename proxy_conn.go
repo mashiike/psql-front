@@ -137,10 +137,10 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			fm, err := conn.backend.Receive()
 			if err != nil {
-				return conn.wrapError(ctx, err, "receive message from client")
+				return conn.wrapError(egCtx, err, "receive message from client")
 			}
 			if _, err := conn.ExtendDeadline(); err != nil {
-				return conn.wrapError(ctx, err, "failed extend deadline")
+				return conn.wrapError(egCtx, err, "failed extend deadline")
 			}
 			switch fm := fm.(type) {
 			case *pgproto3.Query:
@@ -153,7 +153,7 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 							Message:  "Failed on query received handler",
 							Detail:   err.Error(),
 						}); err != nil {
-							return conn.wrapError(ctx, err, "on query recived")
+							return conn.wrapError(egCtx, err, "on query recived")
 						}
 					}
 				}
@@ -167,7 +167,7 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 							Message:  "Failed on query received handler",
 							Detail:   err.Error(),
 						}); err != nil {
-							return conn.wrapError(ctx, err, "on query recived")
+							return conn.wrapError(egCtx, err, "on query recived")
 						}
 					}
 				}
@@ -180,10 +180,10 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			case *pgproto3.Terminate:
 				log.Printf("[debug][%s] receive message from client: connection terminate", remoteAddr)
 				if err := conn.frontend.Send(fm); err != nil {
-					return conn.wrapError(ctx, err, "send terminate message to upstream")
+					return conn.wrapError(egCtx, err, "send terminate message to upstream")
 				}
 				if err := conn.backend.Send(&pgproto3.CloseComplete{}); err != nil {
-					return conn.wrapError(ctx, err, "send close complete message to client")
+					return conn.wrapError(egCtx, err, "send close complete message to client")
 				}
 				return nil
 			default:
@@ -191,7 +191,7 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			err = conn.frontend.Send(fm)
 			if err != nil {
-				return conn.wrapError(ctx, err, "send message to upstream")
+				return conn.wrapError(egCtx, err, "send message to upstream")
 			}
 		}
 	})
@@ -205,7 +205,7 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			bm, err := conn.frontend.Receive()
 			if err != nil {
-				return conn.wrapError(ctx, err, "receive message from upstream")
+				return conn.wrapError(egCtx, err, "receive message from upstream")
 			}
 			conn.backend.SetAuthType(conn.frontend.GetAuthType())
 			switch bm := bm.(type) {
@@ -219,7 +219,7 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 			}
 			err = conn.backend.Send(bm)
 			if err != nil {
-				return conn.wrapError(ctx, err, "send message to client")
+				return conn.wrapError(egCtx, err, "send message to client")
 			}
 		}
 	})

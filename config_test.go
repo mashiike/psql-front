@@ -30,6 +30,14 @@ func TestConfigLoadNoError(t *testing.T) {
 				require.EqualValues(t, []string{"dummy-example", "dummy-internal"}, lo.Map(cfg.Origins, func(o *psqlfront.CommonOriginConfig, _ int) string {
 					return o.ID
 				}))
+				require.True(t, *cfg.Stats.Enabled)
+			},
+		},
+		{
+			casename: "if monitoring interval is zero,fallback enabled = false",
+			path:     "testdata/config/monitoring_interval_zero.yaml",
+			check: func(t *testing.T, cfg *psqlfront.Config) {
+				require.False(t, *cfg.Stats.Enabled)
 			},
 		},
 	}

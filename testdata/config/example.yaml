@@ -9,6 +9,10 @@ cache_database:
 
 default_ttl: 24h
 
+stats:
+  monitoring_interval: 30s
+  store_database: true
+
 certificates:
   - cert: server.crt
     key: server.key
