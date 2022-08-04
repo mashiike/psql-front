@@ -20,6 +20,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	Version = "current"
+)
+
 type ProxyConnection struct {
 	id string
 	*pgx.Conn
@@ -112,6 +116,7 @@ func GetRemoteAddr(ctx context.Context) string {
 }
 
 func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
+	log.Printf("[info] start psql-front running version: %s", Version)
 	defer listener.Close()
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {

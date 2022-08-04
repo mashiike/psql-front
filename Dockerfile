@@ -4,7 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG Version
-RUN go build -o psql-front -ldflags "-s -w -X main.Version=${Version}" /app/cmd/psql-front/main.go
+RUN go build -o psql-front -ldflags "-s -w -X github.com/mashiike/psql-front.Version=${Version}" /app/cmd/psql-front/main.go
 
 FROM debian:bullseye-slim
 COPY --from=builder /app/psql-front /usr/local/bin/psql-front

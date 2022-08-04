@@ -63,7 +63,10 @@ func (cfg *Config) Load(path string) error {
 	if err != nil {
 		return err
 	}
-	return cfg.Restrict()
+	if err := cfg.Restrict(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (cfg *Config) Restrict() error {
@@ -99,11 +102,11 @@ func (cfg *Config) Restrict() error {
 			return fmt.Errorf("origins[%d]:%w", i, err)
 		}
 	}
-	return nil
+	return cfg.validateVersion(Version)
 }
 
 // ValidateVersion validates a version satisfies required_version.
-func (cfg *Config) ValidateVersion(version string) error {
+func (cfg *Config) validateVersion(version string) error {
 	if cfg.versionConstraints == nil {
 		log.Println("[warn] required_version is empty. Skip checking required_version.")
 		return nil

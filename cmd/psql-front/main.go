@@ -18,10 +18,6 @@ import (
 	_ "github.com/mashiike/psql-front/origin/static"
 )
 
-var (
-	Version = "current"
-)
-
 func main() {
 	filter := &logutils.LevelFilter{
 		Levels: []logutils.LogLevel{"debug", "info", "notice", "warn", "error"},
@@ -43,7 +39,7 @@ func main() {
 	)
 	flag.CommandLine.Usage = func() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Usage of psql-front")
-		fmt.Fprintln(flag.CommandLine.Output(), "version:", Version)
+		fmt.Fprintln(flag.CommandLine.Output(), "version:", psqlfront.Version)
 		flag.CommandLine.PrintDefaults()
 	}
 	flag.StringVar(&minLevel, "log-level", "info", "log level")
