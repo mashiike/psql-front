@@ -16,6 +16,7 @@ import (
 	psqlfront "github.com/mashiike/psql-front"
 	_ "github.com/mashiike/psql-front/origin/http"
 	_ "github.com/mashiike/psql-front/origin/static"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -45,6 +46,12 @@ func main() {
 	flag.StringVar(&minLevel, "log-level", "info", "log level")
 	flag.StringVar(&config, "config", "", "psql-front config")
 	flag.Uint64Var(&port, "port", 5434, "psql-front port")
+
+	var pc profConfig
+	flag.BoolVar(&pc.enablePprof, "enable-pprof", false, "")
+	flag.BoolVar(&pc.enableStats, "enable-stats", false, "")
+	flag.IntVar(&pc.debugPort, "debug-port", 8080, "port to listen for debug")
+
 	flag.VisitAll(flagx.EnvToFlagWithPrefix("PSQL_FRONT_"))
 	flag.Parse()
 	filter.SetMinLevel(logutils.LogLevel(strings.ToLower(minLevel)))
@@ -61,7 +68,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("[error] %v", err)
 	}
-	if err := server.RunWithContext(ctx, fmt.Sprintf(":%d", port)); err != nil {
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	if pc.enabled() {
+		eg.Go(func() error {
+			return profiler(egCtx, &pc)
+		})
+	}
+	eg.Go(func() error {
+		return server.RunWithContext(egCtx, fmt.Sprintf(":%d", port))
+	})
+	if err := eg.Wait(); err != nil {
 		log.Fatalf("[error] %v", err)
 	}
 }
