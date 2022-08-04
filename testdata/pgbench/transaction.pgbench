@@ -1,0 +1,20 @@
+
+
+BEGIN;
+
+SELECT attnum, n_distinct, null_frac, avg_width FROM pg_stats, pg_attribute WHERE pg_attribute.attrelid = '"public"."syukujitsu"'::regclass::oid AND pg_stats.attname = pg_attribute.attname AND tablename = 'syukujitsu' and schemaname = 'public';
+
+SET DATESTYLE TO ISO, YMD; SET STATEMENT_TIMEOUT = 1800000;SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY; SET EXTRA_FLOAT_DIGITS = 3;
+
+SET statement_timeout = 5000;
+
+DECLARE cursor_1234_0 NO SCROLL CURSOR FOR SELECT ymd, name FROM "public"."syukujitsu"  LIMIT 100;
+
+SET statement_timeout = 1800000;
+
+FETCH 300000 IN cursor_1234_0;
+
+CLOSE cursor_1234_0;
+
+END;
+

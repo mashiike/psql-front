@@ -13,4 +13,4 @@ release-image: image
 	docker push ghcr.io/mashiike/psql-front:latest
 
 benchmark:
-	pgbench -i -s 100 -U postgres -h localhost -d postgres -p 5434
+	pgbench -c 10 -t 1000 -f testdata/pgbench/transaction.pgbench  -U postgres -h localhost -d postgres -p 5434
