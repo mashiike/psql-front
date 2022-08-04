@@ -11,3 +11,6 @@ image: dist/
 release-image: image
 	docker push ghcr.io/mashiike/psql-front:$(GIT_VER)
 	docker push ghcr.io/mashiike/psql-front:latest
+
+benchmark:
+	pgbench -i -s 100 -U postgres -h localhost -d postgres -p 5434

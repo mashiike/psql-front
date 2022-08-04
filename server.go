@@ -116,7 +116,7 @@ func GetRemoteAddr(ctx context.Context) string {
 }
 
 func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
-	log.Printf("[info] start psql-front running version: %s", Version)
+	log.Printf("[notice] start psql-front running version: %s", Version)
 	defer listener.Close()
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {
@@ -151,7 +151,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Printf("[info] PostgreSQL server is up and running at [%s]", listener.Addr())
+		log.Printf("[notice] PostgreSQL server is up and running at [%s]", listener.Addr())
 		for {
 			client, err := listener.Accept()
 			if err != nil {
@@ -164,7 +164,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 				}
 			} else {
 				remoteAddr := client.RemoteAddr().String()
-				log.Printf("[info][%s] new connection", remoteAddr)
+				log.Printf("[notice][%s] new connection", remoteAddr)
 				upstream, err := net.Dial("tcp", server.upstreamAddr)
 				if err != nil {
 					log.Printf("[error][%s] can not connect upstream:%v", remoteAddr, err)
@@ -182,7 +182,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 				wg.Add(1)
 				go func() {
 					defer func() {
-						log.Printf("[info][%s] close connection", remoteAddr)
+						log.Printf("[notice][%s] close connection", remoteAddr)
 						wg.Done()
 					}()
 					if err := conn.Run(withRemoteAddr(cctx, remoteAddr)); err != nil {
@@ -202,7 +202,7 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 	}()
 
 	<-ctx.Done()
-	log.Println("[info] psql-front shutdown...")
+	log.Println("[notice] psql-front shutdown...")
 	cancel()
 	listener.Close()
 	wg.Wait()

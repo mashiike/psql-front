@@ -26,9 +26,10 @@ services:
       - ./testdata/certificate/server.crt:/server.crt
       - ./testdata/certificate/server.key:/server.key
       - ./testdata/config/example.yaml:/config.yaml
-    command: psql-front --config config.yaml
+    command: psql-front --config config.yaml --enable-pprof --enable-stats --debug-port 8080 --port 5434
     ports:
       - 5434:5434
+      - 8080:8080
     networks:
       - app
     depends_on:

@@ -40,6 +40,7 @@ func profiler(ctx context.Context, pc *profConfig) error {
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		log.Println("[info] enable pprof on /debug/pprof")
 	}
@@ -47,7 +48,7 @@ func profiler(ctx context.Context, pc *profConfig) error {
 		mux.HandleFunc("/debug/stats", statsapi.Handler)
 		log.Println("[info] enable stats on /debug/stats")
 	}
-	addr := fmt.Sprintf("localhost:%d", pc.debugPort)
+	addr := fmt.Sprintf(":%d", pc.debugPort)
 	log.Println("[info] Listening debugger on", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -56,7 +57,10 @@ func profiler(ctx context.Context, pc *profConfig) error {
 	var serverErr error
 	var wg sync.WaitGroup
 	server := http.Server{
-		Handler: mux,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("[debug][debugger] %s %s", r.Method, r.URL.String())
+			mux.ServeHTTP(w, r)
+		}),
 	}
 	wg.Add(1)
 	go func() {
