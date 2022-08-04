@@ -2,11 +2,11 @@ package psqlfront
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 
+	json "github.com/goccy/go-json"
 	pgquery "github.com/pganalyze/pg_query_go/v2"
 	"github.com/samber/lo"
 )

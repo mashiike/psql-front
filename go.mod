@@ -13,6 +13,7 @@ require (
 	github.com/fatih/color v1.13.0
 	github.com/fujiwara/logutils v1.1.0
 	github.com/fukata/golang-stats-api-handler v1.0.0
+	github.com/goccy/go-json v0.9.10
 	github.com/hashicorp/go-version v1.6.0
 	github.com/jackc/pgproto3/v2 v2.3.0
 	github.com/jackc/pgx/v4 v4.16.1
