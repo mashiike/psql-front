@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requirePSQL(t *testing.T) *psqlfront.CacheDatabaseConfig {
+func requirePSQL(t testing.TB) *psqlfront.CacheDatabaseConfig {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping long-running test in short mode")
@@ -52,7 +52,7 @@ func requirePSQL(t *testing.T) *psqlfront.CacheDatabaseConfig {
 	return cfg
 }
 
-func preparePSQL(t *testing.T) *psqlfront.CacheDatabaseConfig {
+func preparePSQL(t testing.TB) *psqlfront.CacheDatabaseConfig {
 	t.Helper()
 	cfg := requirePSQL(t)
 	ctx := context.Background()
