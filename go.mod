@@ -18,7 +18,7 @@ require (
 	github.com/hashicorp/go-version v1.6.0
 	github.com/jackc/pgproto3/v2 v2.3.0
 	github.com/jackc/pgx/v4 v4.16.1
-	github.com/k0kubun/sqldef v0.12.7
+	github.com/k0kubun/sqldef v0.13.2
 	github.com/kayac/go-config v0.6.0
 	github.com/ken39arg/go-flagx v0.0.0-20220608183922-7cf7c6c0093c
 	github.com/lestrrat-go/backoff/v2 v2.0.8
