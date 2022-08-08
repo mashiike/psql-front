@@ -16,7 +16,7 @@ require (
 	github.com/fukata/golang-stats-api-handler v1.0.0
 	github.com/goccy/go-json v0.9.10
 	github.com/hashicorp/go-version v1.6.0
-	github.com/jackc/pgproto3/v2 v2.3.0
+	github.com/jackc/pgproto3/v2 v2.3.1
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/k0kubun/sqldef v0.12.7
 	github.com/kayac/go-config v0.6.0
