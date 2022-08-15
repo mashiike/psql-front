@@ -14,6 +14,7 @@ import (
 	"github.com/fujiwara/logutils"
 	"github.com/ken39arg/go-flagx"
 	psqlfront "github.com/mashiike/psql-front"
+	_ "github.com/mashiike/psql-front/origin/gdrive"
 	_ "github.com/mashiike/psql-front/origin/http"
 	_ "github.com/mashiike/psql-front/origin/static"
 	"golang.org/x/sync/errgroup"

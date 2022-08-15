@@ -7,6 +7,7 @@ import (
 	"log"
 
 	psqlfront "github.com/mashiike/psql-front"
+	"github.com/mashiike/psql-front/origin"
 	"github.com/samber/lo"
 )
 
@@ -52,15 +53,9 @@ type OriginConfig struct {
 }
 
 type TableConfig struct {
-	Name    string          `yaml:"name,omitempty"`
-	Columns []*ColumnConfig `yaml:"columns,omitempty"`
-	Rows    [][]string      `yaml:"rows,omitempty"`
-}
-
-type ColumnConfig struct {
-	Name       string `yaml:"name,omitempty"`
-	DataLength int    `yaml:"length,omitempty"`
-	Contraint  string `yaml:"contraint,omitempty"`
+	Name    string               `yaml:"name,omitempty"`
+	Columns origin.ColumnConfigs `yaml:"columns,omitempty"`
+	Rows    [][]string           `yaml:"rows,omitempty"`
 }
 
 func (cfg *OriginConfig) Type() string {
@@ -78,17 +73,8 @@ func (cfg *OriginConfig) Restrict() error {
 		if len(table.Columns) == 0 {
 			return fmt.Errorf("table[%d].columns: empty", i)
 		}
-		for j, column := range table.Columns {
-			if column.Name == "" {
-				return fmt.Errorf("table[%d:%s].column[%d]: name is required", i, table.Name, j)
-			}
-			if column.DataLength < 0 {
-
-				return fmt.Errorf("table[%d:%s].column[%d]: length over 0", i, table.Name, j)
-			}
-			if column.DataLength == 0 {
-				column.DataLength = 255
-			}
+		if err := table.Columns.Restrict(); err != nil {
+			return fmt.Errorf("table[%d:%s].%w", i, table.Name, err)
 		}
 	}
 	return nil
@@ -101,14 +87,7 @@ func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 			return &psqlfront.Table{
 				SchemaName: cfg.Schema,
 				RelName:    table.Name,
-				Columns: lo.Map(table.Columns, func(column *ColumnConfig, _ int) *psqlfront.Column {
-					return &psqlfront.Column{
-						Name:      column.Name,
-						DataType:  "VARCHAR",
-						Length:    &column.DataLength,
-						Contraint: column.Contraint,
-					}
-				}),
+				Columns:    table.Columns.ToColumns(),
 			}
 		}),
 		rows: lo.FromEntries(lo.Map(cfg.Tables, func(table *TableConfig, _ int) lo.Entry[string, [][]string] {
