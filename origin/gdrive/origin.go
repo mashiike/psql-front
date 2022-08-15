@@ -149,11 +149,11 @@ func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 	}
 	driveSvc, err := drive.NewService(ctx, gcpOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("Create Google Drive Service: %w", err)
+		return nil, fmt.Errorf("create Google Drive Service: %w", err)
 	}
 	sheetsSvc, err := sheets.NewService(ctx, gcpOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("Create Google Sheets Service: %w", err)
+		return nil, fmt.Errorf("create Google Sheets Service: %w", err)
 	}
 	return &Origin{
 		driveSvc:  driveSvc,
