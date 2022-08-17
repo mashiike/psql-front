@@ -1,10 +1,14 @@
-package psqlfront_test
+package e2e_test
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -12,15 +16,26 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/lestrrat-go/backoff/v2"
 	psqlfront "github.com/mashiike/psql-front"
+	_ "github.com/mashiike/psql-front/origin/http"
 	_ "github.com/mashiike/psql-front/origin/static"
 	"github.com/stretchr/testify/require"
 )
 
 func TestServer(t *testing.T) {
-	psqlfront.RegisterOriginType(DummyOriginType, func() psqlfront.OriginConfig {
-		return &DummyOriginConfig{}
-	})
-	defer psqlfront.UnregisterOriginType(DummyOriginType)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/fuga", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/csv")
+		w.WriteHeader(http.StatusOK)
+		writer := csv.NewWriter(w)
+		writer.WriteAll([][]string{
+			{"ymd", "name", "vaule"},
+			{"2022-01-01", "正月", "0"},
+			{"2022-01-02", "なにもない日", "1"},
+		})
+	}))
+	originServer := httptest.NewServer(mux)
+	defer originServer.Close()
+	os.Setenv("ORIGIN_SERVER_URL", originServer.URL)
 	cfg := psqlfront.DefaultConfig()
 	err := cfg.Load("testdata/config/default.yaml")
 	require.NoError(t, err)
@@ -78,7 +93,7 @@ func TestServer(t *testing.T) {
 	log.Printf("[notice] test exec set")
 	require.NoError(t, err)
 	log.Printf("[notice] test exec declare")
-	_, err = conn.Exec(ctx, "DECLARE cursor_test_1234 NO SCROLL CURSOR FOR SELECT id FROM example.fuga LIMIT 100;")
+	_, err = conn.Exec(ctx, "DECLARE cursor_test_1234 NO SCROLL CURSOR FOR SELECT ymd,name,value FROM example.fuga LIMIT 100;")
 	require.NoError(t, err)
 	log.Printf("[notice] test query fetch")
 	rows, err := conn.Query(ctx, "FETCH 5 IN cursor_test_1234;")
@@ -97,7 +112,8 @@ func TestServer(t *testing.T) {
 	_, err = conn.Exec(ctx, "COMMIT;")
 	require.NoError(t, err)
 	expected := [][]interface{}{
-		{"value_id"},
+		{time.Date(2022, 01, 01, 0, 0, 0, 0, time.UTC), "正月", int32(0)},
+		{time.Date(2022, 01, 02, 0, 0, 0, 0, time.UTC), "なにもない日", int32(1)},
 	}
 	require.EqualValues(t, expected, actual)
 	conn.Close(ctx)
