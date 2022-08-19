@@ -76,10 +76,19 @@ func (m *Migrator) ExecuteMigration(tables []*Table) error {
 		return err
 	}
 	beforeApply := m.GenerateCreateSchemaStmt(tables)
-	return m.executeMigration(desiredDDLs, beforeApply)
+	return m.executeMigration(desiredDDLs, beforeApply, nil)
 }
 
-func (m *Migrator) executeMigration(desiredDDLs string, beforeApply string) error {
+func (m *Migrator) ExecuteMigrationForTargetTables(tables []*Table) error {
+	desiredDDLs, err := m.GenerateDesiredDDLs(tables)
+	if err != nil {
+		return err
+	}
+	beforeApply := m.GenerateCreateSchemaStmt(tables)
+	return m.executeMigration(desiredDDLs, beforeApply, tables)
+}
+
+func (m *Migrator) executeMigration(desiredDDLs string, beforeApply string, onlyTables []*Table) error {
 	if m.disableSSL {
 		originalEnv := os.Getenv("PGSSLMODE")
 		os.Setenv("PGSSLMODE", "disable")
@@ -111,8 +120,12 @@ func (m *Migrator) executeMigration(desiredDDLs string, beforeApply string) erro
 			return fmt.Errorf("failed dump target db ddls:%w", err)
 		}
 	}
+	generatorCfg := database.GeneratorConfig{}
+	if len(onlyTables) > 0 {
+		generatorCfg.TargetTables = lo.Map(onlyTables, func(t *Table, _ int) string { return t.String() })
+	}
 
-	ddls, err := schema.GenerateIdempotentDDLs(schema.GeneratorModePostgres, m.parser, desiredDDLs, currentDDLs, database.GeneratorConfig{})
+	ddls, err := schema.GenerateIdempotentDDLs(schema.GeneratorModePostgres, m.parser, desiredDDLs, currentDDLs, generatorCfg)
 	if err != nil {
 		return fmt.Errorf("generate idempotent DDLs:%w", err)
 	}

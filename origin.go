@@ -11,9 +11,14 @@ type CacheWriter interface {
 	AppendRows(context.Context, [][]interface{}) error
 }
 
+type CacheMigrator interface {
+	Migrate(context.Context, *Table) error
+}
+
 type Origin interface {
 	ID() string
 	GetTables(ctx context.Context) ([]*Table, error)
+	MigrateTable(context.Context, CacheMigrator, *Table) error
 	GetRows(context.Context, CacheWriter, *Table) error
 }
 

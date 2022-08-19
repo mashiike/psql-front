@@ -38,6 +38,10 @@ func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
 	}), nil
 }
 
+func (o *Origin) MigrateTable(ctx context.Context, _ psqlfront.CacheMigrator, _ *psqlfront.Table) error {
+	return nil
+}
+
 func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
 	if o.schema != table.SchemaName {
 		return psqlfront.WrapOriginNotFoundError(errors.New("origin schema is missmatch"))

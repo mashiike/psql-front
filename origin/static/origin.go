@@ -30,6 +30,10 @@ func (o *Origin) ID() string {
 	return o.id
 }
 
+func (o *Origin) MigrateTable(ctx context.Context, _ psqlfront.CacheMigrator, _ *psqlfront.Table) error {
+	return nil
+}
+
 func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
 	return o.tables, nil
 }

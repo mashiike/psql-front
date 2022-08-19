@@ -19,6 +19,10 @@ func (o *DummyOrigin) ID() string {
 	return o.id
 }
 
+func (o *DummyOrigin) MigrateTable(ctx context.Context, _ psqlfront.CacheMigrator, _ *psqlfront.Table) error {
+	return nil
+}
+
 func (o *DummyOrigin) GetTables(ctx context.Context) ([]*psqlfront.Table, error) {
 	return o.tables, nil
 }
