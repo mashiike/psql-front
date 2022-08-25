@@ -42,34 +42,6 @@ func (cfgs ColumnConfigs) ToColumns() []*psqlfront.Column {
 	})
 }
 
-func (cfgs ColumnConfigs) ToRowsWithoutConvert(records [][]interface{}, ignoreLines int) [][]interface{} {
-	if ignoreLines > 0 {
-		if ignoreLines >= len(records) {
-			return nil
-		}
-		records = records[ignoreLines:]
-	}
-	return lo.Map(records, func(record []interface{}, _ int) []interface{} {
-		row := make([]interface{}, 0, len(cfgs))
-		for i, c := range cfgs {
-			if c.ColumnIndex != nil {
-				if *c.ColumnIndex < len(record) {
-					row = append(row, record[*c.ColumnIndex])
-				} else {
-					row = append(row, nil)
-				}
-				continue
-			}
-			if i < len(record) {
-				row = append(row, record[i])
-			} else {
-				row = append(row, nil)
-			}
-		}
-		return row
-	})
-}
-
 func (cfgs ColumnConfigs) ToRows(records [][]string, ignoreLines int) [][]interface{} {
 	if ignoreLines > 0 {
 		if ignoreLines >= len(records) {
