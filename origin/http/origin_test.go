@@ -1,4 +1,4 @@
-package origin_test
+package http_test
 
 import (
 	"bytes"
@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/mashiike/psql-front/origin"
+	httporigin "github.com/mashiike/psql-front/origin/http"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
 
-func TestTableFetchRows(t *testing.T) {
+func TestTableConfigFetchRows(t *testing.T) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	w.WriteAll([][]string{
@@ -55,14 +56,16 @@ func TestTableFetchRows(t *testing.T) {
 	}
 	cases := []struct {
 		name     string
-		cfg      *origin.RemoteTableConfig
+		cfg      *httporigin.TableConfig
 		expected [][]interface{}
 	}{
 		{
 			name: "sjis",
-			cfg: &origin.RemoteTableConfig{
-				Name:        "table",
-				Columns:     columns,
+			cfg: &httporigin.TableConfig{
+				BaseTableConfig: origin.BaseTableConfig{
+					Name:    "table",
+					Columns: columns,
+				},
 				IgnoreLines: 1,
 				URLString:   s.URL + "/sjis",
 			},
@@ -75,9 +78,11 @@ func TestTableFetchRows(t *testing.T) {
 		},
 		{
 			name: "eucjp",
-			cfg: &origin.RemoteTableConfig{
-				Name:        "table",
-				Columns:     columns,
+			cfg: &httporigin.TableConfig{
+				BaseTableConfig: origin.BaseTableConfig{
+					Name:    "table",
+					Columns: columns,
+				},
 				IgnoreLines: 1,
 				URLString:   s.URL + "/eucjp",
 			},
@@ -91,9 +96,9 @@ func TestTableFetchRows(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := c.cfg.Restrict([]string{"http"})
+			err := c.cfg.Restrict("test")
 			require.NoError(t, err)
-			rows, err := c.cfg.FetchRows(context.Background(), nil, nil)
+			rows, err := c.cfg.FetchRows(context.Background())
 			require.NoError(t, err)
 			require.EqualValues(t, c.expected, rows)
 		})
