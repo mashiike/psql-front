@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -151,7 +150,7 @@ func (cfg *TableConfig) Restrict(schema string) error {
 	return nil
 }
 
-func (cfg *TableConfig) Fetcher(ctx context.Context) (io.ReadCloser, error) {
+func (cfg *TableConfig) Fetcher(ctx context.Context) ([][]string, error) {
 	remoteAddr := psqlfront.GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] http request: GET %s", remoteAddr, cfg.URL)
 	resp, err := http.Get(cfg.URL.String())
@@ -161,11 +160,8 @@ func (cfg *TableConfig) Fetcher(ctx context.Context) (io.ReadCloser, error) {
 	if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("GET %s failed: %d %s", cfg.URL, resp.StatusCode, resp.Status)
 	}
-	return resp.Body, nil
-}
-
-func (cfg *TableConfig) Parser(_ context.Context, r io.Reader) ([][]string, error) {
-	tr := origin.ConvertTextEncoding(r, cfg.TextEncoding)
+	defer resp.Body.Close()
+	tr := origin.ConvertTextEncoding(resp.Body, cfg.TextEncoding)
 	switch cfg.Format {
 	case "csv", "CSV":
 		reader := csv.NewReader(tr)
@@ -175,7 +171,7 @@ func (cfg *TableConfig) Parser(_ context.Context, r io.Reader) ([][]string, erro
 }
 
 func (cfg *TableConfig) FetchRows(ctx context.Context) ([][]interface{}, error) {
-	return cfg.BaseTableConfig.FetchRows(ctx, cfg.Fetcher, cfg.Parser, cfg.IgnoreLines)
+	return cfg.BaseTableConfig.FetchRows(ctx, cfg.Fetcher, cfg.IgnoreLines)
 }
 
 func (cfg *TableConfig) DetectSchema(ctx context.Context) error {
@@ -183,7 +179,7 @@ func (cfg *TableConfig) DetectSchema(ctx context.Context) error {
 	if now.Sub(cfg.LastSchemaDetection) < cfg.DetectedSchemaExpiration {
 		return nil
 	}
-	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.Parser, cfg.IgnoreLines); err != nil {
+	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.IgnoreLines); err != nil {
 		return err
 	}
 	cfg.LastSchemaDetection = now

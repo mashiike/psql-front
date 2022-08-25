@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -39,11 +38,9 @@ func (o *Origin) ID() string {
 }
 
 type Origin struct {
-	driveSvc  *drive.Service
-	sheetsSvc *sheets.Service
-	id        string
-	schema    string
-	tables    []*TableConfig
+	id     string
+	schema string
+	tables []*TableConfig
 }
 
 func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
@@ -65,7 +62,7 @@ func (o *Origin) MigrateTable(ctx context.Context, m psqlfront.CacheMigrator, ta
 			log.Printf("[debug][%s] no schema detection: file_id=%s", remoteAddr, t.FileID)
 			return nil
 		}
-		if err := o.DetectSchema(ctx, t); err != nil {
+		if err := t.DetectSchema(ctx); err != nil {
 			return err
 		}
 		return m.Migrate(ctx, t.ToTable())
@@ -89,27 +86,11 @@ func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *ps
 func (o *Origin) getRows(ctx context.Context, w psqlfront.CacheWriter, cfg *TableConfig, table *psqlfront.Table) error {
 	remoteAddr := psqlfront.GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] get rows: file_id=%s", remoteAddr, cfg.FileID)
-	switch cfg.FileType {
-	case FileTypeSpreadsheets:
-		r := cfg.Range
-		if r == "" {
-			r = "A:ZZ"
-		}
-		resp, err := o.sheetsSvc.Spreadsheets.Values.Get(cfg.FileID, r).Context(ctx).Do()
-		if err != nil {
-			return fmt.Errorf("can not get %s: %w", cfg.URLString, err)
-		}
-		rows := cfg.Columns.ToRowsWithoutConvert(resp.Values, cfg.IgnoreLines)
-		return w.AppendRows(ctx, rows)
-	case FileTypeCSV:
-		rows, err := o.FetchRows(ctx, cfg)
-		if err != nil {
-			return fmt.Errorf("try get %s origin: %w", table.String(), err)
-		}
-		return w.AppendRows(ctx, rows)
-	default:
-		return errors.New("unexpected file type")
+	rows, err := cfg.FetchRows(ctx)
+	if err != nil {
+		return fmt.Errorf("try get %s origin: %w", table.String(), err)
 	}
+	return w.AppendRows(ctx, rows)
 }
 
 type OriginConfig struct {
@@ -129,6 +110,9 @@ type TableConfig struct {
 	DetectedSchemaExpiration time.Duration `yaml:"detected_schema_expiration"`
 	URL                      *url.URL      `yaml:"-"`
 	LastSchemaDetection      time.Time     `yaml:"-"`
+
+	driveSvc  *drive.Service  `yaml:"-"`
+	sheetsSvc *sheets.Service `yaml:"-"`
 }
 
 type ColumnConfig struct {
@@ -147,15 +131,6 @@ func (cfg *OriginConfig) Restrict() error {
 	if cfg.Schema == "" {
 		cfg.Schema = "public"
 	}
-	for i, table := range cfg.Tables {
-		if err := table.Restrict(cfg.Schema); err != nil {
-			return fmt.Errorf("table[%d]: %w", i, err)
-		}
-	}
-	return nil
-}
-
-func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 	ctx := context.Background()
 	gcpOpts := []option.ClientOption{
 		option.WithScopes(
@@ -164,23 +139,32 @@ func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 	}
 	driveSvc, err := drive.NewService(ctx, gcpOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("create Google Drive Service: %w", err)
+		return fmt.Errorf("create Google Drive Service: %w", err)
 	}
 	sheetsSvc, err := sheets.NewService(ctx, gcpOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("create Google Sheets Service: %w", err)
+		return fmt.Errorf("create Google Sheets Service: %w", err)
 	}
+	for i, table := range cfg.Tables {
+		if err := table.Restrict(cfg.Schema, driveSvc, sheetsSvc); err != nil {
+			return fmt.Errorf("table[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 	return &Origin{
-		driveSvc:  driveSvc,
-		sheetsSvc: sheetsSvc,
-		id:        id,
-		schema:    cfg.Schema,
-		tables:    cfg.Tables,
+		id:     id,
+		schema: cfg.Schema,
+		tables: cfg.Tables,
 	}, nil
 }
 
-func (cfg *TableConfig) Restrict(schema string) error {
+func (cfg *TableConfig) Restrict(schema string, driveSvc *drive.Service, sheetsSvc *sheets.Service) error {
 	var err error
+	cfg.driveSvc = driveSvc
+	cfg.sheetsSvc = sheetsSvc
 	if cfg.URL, err = url.Parse(cfg.URLString); err != nil {
 		return fmt.Errorf("url is invalid: %v", err)
 	}
@@ -214,11 +198,8 @@ func (cfg *TableConfig) Restrict(schema string) error {
 		if cfg.DetectedSchemaExpiration == 0 {
 			cfg.DetectedSchemaExpiration = 24 * time.Hour
 		}
-		cfg.Columns = origin.ColumnConfigs{
-			{
-				Name:     "_dummy",
-				DataType: "VARCHAR",
-			},
+		if err := cfg.DetectSchema(context.Background()); err != nil {
+			return fmt.Errorf("initial schema detect: %w", err)
 		}
 	}
 	if err := cfg.BaseTableConfig.Restrict(schema); err != nil {
@@ -227,32 +208,49 @@ func (cfg *TableConfig) Restrict(schema string) error {
 	return nil
 }
 
-func (o *Origin) GetFetcher(cfg *TableConfig) func(context.Context) (io.ReadCloser, error) {
-	return func(ctx context.Context) (io.ReadCloser, error) {
-		resp, err := o.driveSvc.Files.Export(cfg.FileID, "text/csv").Context(ctx).Download()
+func (cfg *TableConfig) Fetcher(ctx context.Context) ([][]string, error) {
+	switch cfg.FileType {
+	case FileTypeSpreadsheets:
+		r := cfg.Range
+		if r == "" {
+			r = "A:ZZ"
+		}
+		resp, err := cfg.sheetsSvc.Spreadsheets.Values.Get(cfg.FileID, r).Context(ctx).Do()
+		if err != nil {
+			return nil, fmt.Errorf("can not get %s: %w", cfg.URLString, err)
+		}
+		rows := lo.Map(resp.Values, func(values []interface{}, _ int) []string {
+			return lo.Map(values, func(value interface{}, _ int) string {
+				s, ok := value.(string)
+				if ok {
+					return s
+				}
+				return fmt.Sprintf("%s", value)
+			})
+		})
+		return rows, nil
+	case FileTypeCSV:
+		resp, err := cfg.driveSvc.Files.Export(cfg.FileID, "text/csv").Context(ctx).Download()
 		if err != nil {
 			return nil, fmt.Errorf("can not get %s: %w", cfg.URLString, err)
 		}
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("can not get %s: http status: %s", cfg.URLString, resp.Status)
 		}
-		return resp.Body, nil
-	}
-}
-
-func (o *Origin) GetParser(cfg *TableConfig) func(_ context.Context, r io.Reader) ([][]string, error) {
-	return func(_ context.Context, r io.Reader) ([][]string, error) {
-		tr := origin.ConvertTextEncoding(r, nil)
+		defer resp.Body.Close()
+		tr := origin.ConvertTextEncoding(resp.Body, nil)
 		reader := csv.NewReader(tr)
 		return reader.ReadAll()
+	default:
+		return nil, errors.New("unexpected file type")
 	}
 }
 
-func (o *Origin) FetchRows(ctx context.Context, cfg *TableConfig) ([][]interface{}, error) {
-	return cfg.BaseTableConfig.FetchRows(ctx, o.GetFetcher(cfg), o.GetParser(cfg), cfg.IgnoreLines)
+func (cfg *TableConfig) FetchRows(ctx context.Context) ([][]interface{}, error) {
+	return cfg.BaseTableConfig.FetchRows(ctx, cfg.Fetcher, cfg.IgnoreLines)
 }
 
-func (o *Origin) DetectSchema(ctx context.Context, cfg *TableConfig) error {
+func (cfg *TableConfig) DetectSchema(ctx context.Context) error {
 	remoteAddr := psqlfront.GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] try detect schema: file_id=%s", remoteAddr, cfg.FileID)
 	now := flextime.Now()
@@ -261,7 +259,7 @@ func (o *Origin) DetectSchema(ctx context.Context, cfg *TableConfig) error {
 		return nil
 	}
 	log.Printf("[debug][%s] start detect schema: file_id=%s", remoteAddr, cfg.FileID)
-	if err := cfg.BaseTableConfig.DetectSchema(ctx, o.GetFetcher(cfg), o.GetParser(cfg), cfg.IgnoreLines); err != nil {
+	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.IgnoreLines); err != nil {
 		return err
 	}
 	log.Printf("[debug][%s] end detect schema: file_id=%s", remoteAddr, cfg.FileID)

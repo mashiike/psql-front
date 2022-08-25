@@ -3,7 +3,6 @@ package origin
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 
 	psqlfront "github.com/mashiike/psql-front"
@@ -26,28 +25,14 @@ func (cfg *BaseTableConfig) Restrict(schema string) error {
 	return nil
 }
 
-type Fetcher func(context.Context) (io.ReadCloser, error)
-type Parser func(context.Context, io.Reader) ([][]string, error)
+type Fetcher func(context.Context) ([][]string, error)
 
-func (cfg *BaseTableConfig) FetchRows(ctx context.Context, fetcher Fetcher, parser Parser, ignoreLines int) ([][]interface{}, error) {
-	rows, err := cfg.fetchRows(ctx, fetcher, parser)
+func (cfg *BaseTableConfig) FetchRows(ctx context.Context, fetcher Fetcher, ignoreLines int) ([][]interface{}, error) {
+	rows, err := fetcher(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return cfg.Columns.ToRows(rows, ignoreLines), nil
-}
-
-func (cfg *BaseTableConfig) fetchRows(ctx context.Context, fetcher Fetcher, parser Parser) ([][]string, error) {
-	reader, err := fetcher(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	rows, err := parser(ctx, reader)
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
 }
 
 func (cfg *BaseTableConfig) ToTable() *psqlfront.Table {
@@ -58,8 +43,8 @@ func (cfg *BaseTableConfig) ToTable() *psqlfront.Table {
 	}
 }
 
-func (cfg *BaseTableConfig) DetectSchema(ctx context.Context, fetcher Fetcher, parser Parser, ignoreLines int) error {
-	rows, err := cfg.fetchRows(ctx, fetcher, parser)
+func (cfg *BaseTableConfig) DetectSchema(ctx context.Context, fetcher Fetcher, ignoreLines int) error {
+	rows, err := fetcher(ctx)
 	if err != nil {
 		return err
 	}
