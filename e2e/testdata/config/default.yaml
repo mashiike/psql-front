@@ -1,0 +1,35 @@
+required_version: ">= v0.0.0"
+
+cache_database:
+  host: "localhost"
+  username: "postgres"
+  password: "{{ env `PSOTGRES_DB_PASSWORD` `postgres` }}"
+  port: 5432
+  database: "postgres"
+
+default_ttl: 86400s
+
+certificates:
+  - cert: testdata/certificate/server.crt
+    key: testdata/certificate/server.key
+
+origins:
+  - id: testdata
+    type: HTTP
+    schema: example
+    tables:
+      - name: fuga
+        url: "{{ must_env `ORIGIN_SERVER_URL` }}/fuga"
+        format: csv
+        ignore_lines: 1
+        columns:
+          - name: ymd
+            data_type: DATE
+            constraint: NOT NULL
+          - name: name
+            data_type: VARCHAR
+            length: 64
+            constraint: NOT NULL
+          - name: value
+            data_type: INTEGER
+            constraint: NOT NULL

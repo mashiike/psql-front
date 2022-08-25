@@ -333,15 +333,22 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 	for _, noHitTable := range noHitTables {
 		t := noHitTable
 		eg.Go(func() error {
+			if err := server.migrateCacheTable(egctx, t); err != nil {
+				log.Printf("[warn][%s] %s can not migrate cache table: %v", remoteAddr, t, err)
+				var onfe *OriginNotFoundError
+				if !errors.As(err, &onfe) {
+					return fmt.Errorf("migrate cache table:%w", err)
+				}
+				return nil
+			}
 			tx, err := server.db.Begin(egctx)
 			log.Printf("[debug] start `%s` tx", t.String())
 			if err != nil {
 				return fmt.Errorf("start tx:%w", err)
 			}
 			var commited bool
-			var rollbacked bool
 			defer func() {
-				if !commited && !rollbacked {
+				if !commited {
 					if err := tx.Rollback(ctx); err != nil {
 						log.Printf("[warn][%s] %s tx rollback failed: %v", remoteAddr, t.String(), err)
 					} else {
@@ -356,12 +363,6 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 				if !errors.As(err, &onfe) {
 					return fmt.Errorf("refresh cache:%w", err)
 				}
-				if err := tx.Rollback(ctx); err != nil {
-					log.Printf("[warn][%s] %s tx rollback failed: %v", remoteAddr, t.String(), err)
-				} else {
-					log.Printf("[debug][%s] %s tx rollback", remoteAddr, t.String())
-				}
-				rollbacked = true
 				return nil
 			}
 			if err := tx.Commit(ctx); err != nil {
@@ -471,6 +472,43 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 	return result, nil
 }
 
+type cacheMigrator struct {
+	migrator *Migrator
+	table    *Table
+}
+
+func (m *cacheMigrator) Migrate(ctx context.Context, t *Table) error {
+	if m.table.String() != t.String() {
+		return errors.New("table name is missmatch")
+	}
+	if err := m.migrator.ExecuteMigrationForTargetTables([]*Table{t}); err != nil {
+		return err
+	}
+	m.table.Columns = t.Columns
+	m.table.Constraints = t.Constraints
+	return nil
+}
+
+func (server *Server) migrateCacheTable(ctx context.Context, table *Table) error {
+	log.Printf("[debug] migrate target %s", table.String())
+	originID, ok := server.originIDsByTable[table.String()]
+	if !ok {
+		return WrapOriginNotFoundError(fmt.Errorf("table %s not found", table))
+	}
+	origin, ok := server.origins[originID]
+	if !ok {
+		return WrapOriginNotFoundError(fmt.Errorf("origin %s not found", table))
+	}
+	err := origin.MigrateTable(ctx, &cacheMigrator{
+		migrator: server.migrator,
+		table:    table,
+	}, table)
+	if err != nil {
+		return fmt.Errorf("origin %s, table %s migrate table:%w", originID, table, err)
+	}
+	return nil
+}
+
 type cacheWriter struct {
 	tx    pgx.Tx
 	table *Table
@@ -479,7 +517,7 @@ type cacheWriter struct {
 func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) error {
 
 	columns := lo.Map(w.table.Columns, func(c *Column, _ int) string {
-		return c.Name
+		return `"` + c.Name + `"`
 	})
 	q := psqlQueryBuilder.Insert(w.table.String()).Columns(columns...)
 

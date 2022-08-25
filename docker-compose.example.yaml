@@ -23,8 +23,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - ./testdata/certificate/server.crt:/server.crt
-      - ./testdata/certificate/server.key:/server.key
+      - ./e2e/testdata/certificate/server.crt:/server.crt
+      - ./e2e/testdata/certificate/server.key:/server.key
       - ./testdata/config/example.yaml:/config.yaml
     command: psql-front --config config.yaml --enable-pprof --enable-stats --debug-port 8080 --port 5434 --log-level notice
     ports:

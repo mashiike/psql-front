@@ -24,10 +24,12 @@ require (
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/mattn/go-encoding v0.0.2
 	github.com/pganalyze/pg_query_go/v2 v2.1.2
+	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca
 	github.com/samber/lo v1.27.0
 	github.com/stretchr/testify v1.8.0
-	golang.org/x/net v0.0.0-20220802222814-0bcc04d9c69b
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+	golang.org/x/text v0.3.7
+	google.golang.org/api v0.85.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -76,11 +78,10 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
 	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
+	golang.org/x/net v0.0.0-20220802222814-0bcc04d9c69b // indirect
 	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2 // indirect
 	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
-	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
-	google.golang.org/api v0.85.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220617124728-180714bec0ad // indirect
 	google.golang.org/grpc v1.47.0 // indirect

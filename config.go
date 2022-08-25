@@ -5,10 +5,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -196,7 +196,7 @@ func loadSrcFrom(path string) ([]byte, error) {
 	u, err := url.Parse(path)
 	if err != nil {
 		// not a URL. load as a file path
-		return ioutil.ReadFile(path)
+		return os.ReadFile(path)
 	}
 	switch u.Scheme {
 	case "http", "https":
@@ -206,7 +206,7 @@ func loadSrcFrom(path string) ([]byte, error) {
 	case "gcs":
 		return fetchGCS(u)
 	case "file", "":
-		return ioutil.ReadFile(u.Path)
+		return os.ReadFile(u.Path)
 	default:
 		return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
 	}
@@ -219,7 +219,7 @@ func fetchHTTP(u *url.URL) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	return ioutil.ReadAll(resp.Body)
+	return io.ReadAll(resp.Body)
 }
 
 func fetchS3(u *url.URL) ([]byte, error) {

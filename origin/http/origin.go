@@ -1,20 +1,20 @@
-package static
+package http
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
+	"github.com/Songmu/flextime"
 	psqlfront "github.com/mashiike/psql-front"
-	encoding "github.com/mattn/go-encoding"
+	"github.com/mashiike/psql-front/origin"
 	"github.com/samber/lo"
-	"golang.org/x/net/html/charset"
 )
 
 const OriginType = "HTTP"
@@ -38,8 +38,27 @@ func (o *Origin) ID() string {
 
 func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
 	return lo.Map(o.tables, func(cfg *TableConfig, _ int) *psqlfront.Table {
-		return cfg.toTableInfo(o.schema)
+		return cfg.ToTable()
 	}), nil
+}
+
+func (o *Origin) MigrateTable(ctx context.Context, m psqlfront.CacheMigrator, table *psqlfront.Table) error {
+	if o.schema != table.SchemaName {
+		return psqlfront.WrapOriginNotFoundError(errors.New("origin schema is missmatch"))
+	}
+	for _, t := range o.tables {
+		if t.Name != table.RelName {
+			continue
+		}
+		if !t.SchemaDetection {
+			return nil
+		}
+		if err := t.DetectSchema(ctx); err != nil {
+			return err
+		}
+		return m.Migrate(ctx, t.ToTable())
+	}
+	return psqlfront.WrapOriginNotFoundError(errors.New("origin table not found"))
 }
 
 func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
@@ -54,76 +73,13 @@ func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *ps
 	}
 	return psqlfront.WrapOriginNotFoundError(errors.New("origin table not found"))
 }
+
 func (o *Origin) getRows(ctx context.Context, w psqlfront.CacheWriter, cfg *TableConfig, table *psqlfront.Table) error {
-	remoteAddr := psqlfront.GetRemoteAddr(ctx)
-	log.Printf("[debug][%s] http request: GET %s", remoteAddr, cfg.URL)
-	resp, err := http.Get(cfg.URL)
+	rows, err := cfg.FetchRows(ctx)
 	if err != nil {
-		return fmt.Errorf("try get %s origin: GET %s failed: %v", table.String(), cfg.URL, err)
+		return fmt.Errorf("try get %s origin: %w", table.String(), err)
 	}
-	if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("try get %s origin: GET %s failed: %d %s", table.String(), cfg.URL, resp.StatusCode, resp.Status)
-	}
-	defer resp.Body.Close()
-	br := bufio.NewReader(resp.Body)
-	var r io.Reader = br
-	if cfg.TextEncoding != nil {
-		if enc := encoding.GetEncoding(*cfg.TextEncoding); enc != nil {
-			r = enc.NewDecoder().Reader(br)
-		}
-	}
-	if r == br {
-		if data, err2 := br.Peek(1024); err2 == nil {
-			enc, name, _ := charset.DetermineEncoding(data, resp.Header.Get("Content-Type"))
-			if enc != nil {
-				log.Printf("[debug][%s] content-encoding: %v", remoteAddr, enc)
-				r = enc.NewDecoder().Reader(br)
-
-			} else if len(name) > 0 {
-				log.Printf("[debug][%s] content-encoding: name = %s", remoteAddr, name)
-				if enc := encoding.GetEncoding(name); enc != nil {
-					r = enc.NewDecoder().Reader(br)
-				}
-			} else {
-				log.Printf("[debug][%s] content-encoding: not set", remoteAddr)
-			}
-		}
-	}
-
-	switch cfg.Format {
-	default:
-		reader := csv.NewReader(r)
-		records, err := reader.ReadAll()
-		if err != nil {
-			return fmt.Errorf("try get %s origin: GET %s: parse failed: %w", table.String(), cfg.URL, err)
-		}
-		if cfg.IgnoreLines > 0 {
-			if cfg.IgnoreLines >= len(records) {
-				return nil
-			}
-			records = records[cfg.IgnoreLines:]
-		}
-		return w.AppendRows(ctx, lo.Map(records, func(record []string, _ int) []interface{} {
-			log.Printf("[debug][%s] row: %v", remoteAddr, record)
-			row := make([]interface{}, 0, len(cfg.Columns))
-			for i, c := range cfg.Columns {
-				if c.ColumnIndex != nil {
-					if *c.ColumnIndex < len(record) {
-						row = append(row, record[*c.ColumnIndex])
-					} else {
-						row = append(row, nil)
-					}
-					continue
-				}
-				if i < len(record) {
-					row = append(row, record[i])
-				} else {
-					row = append(row, nil)
-				}
-			}
-			return row
-		}))
-	}
+	return w.AppendRows(ctx, rows)
 }
 
 type OriginConfig struct {
@@ -132,21 +88,16 @@ type OriginConfig struct {
 }
 
 type TableConfig struct {
-	Name         string          `yaml:"name,omitempty"`
-	Columns      []*ColumnConfig `yaml:"columns,omitempty"`
-	URL          string          `yaml:"url"`
-	Format       string          `yaml:"format"`
-	IgnoreLines  int             `yaml:"ignore_lines"`
-	TextEncoding *string         `yaml:"text_encoding"`
-	urlObj       *url.URL        `yaml:"-"`
-}
+	origin.BaseTableConfig `yaml:",inline"`
 
-type ColumnConfig struct {
-	Name        string `yaml:"name,omitempty"`
-	DataType    string `yaml:"data_type,omitempty"`
-	DataLength  *int   `yaml:"length,omitempty"`
-	Contraint   string `yaml:"contraint,omitempty"`
-	ColumnIndex *int   `yaml:"column_index,omitempty"`
+	URLString                string        `yaml:"url"`
+	Format                   string        `yaml:"format"`
+	IgnoreLines              int           `yaml:"ignore_lines"`
+	TextEncoding             *string       `yaml:"text_encoding"`
+	SchemaDetection          bool          `yaml:"schema_detection"`
+	DetectedSchemaExpiration time.Duration `yaml:"detected_schema_expiration"`
+	URL                      *url.URL      `yaml:"-"`
+	LastSchemaDetection      time.Time     `yaml:"-"`
 }
 
 func (cfg *OriginConfig) Type() string {
@@ -158,34 +109,80 @@ func (cfg *OriginConfig) Restrict() error {
 		cfg.Schema = "public"
 	}
 	for i, table := range cfg.Tables {
-		if table.Name == "" {
-			return fmt.Errorf("table[%d]: name is required", i)
-		}
-		if table.Format == "" {
-			table.Format = "csv"
-		}
-		if table.URL == "" {
-			return fmt.Errorf("table[%d]: url is required", i)
-		}
-		var err error
-		if table.urlObj, err = url.Parse(table.URL); err != nil {
-			return fmt.Errorf("table[%d]: url is invalid: %v", i, err)
-		}
-		if table.urlObj.Scheme != "http" && table.urlObj.Scheme != "https" {
-			return fmt.Errorf("table[%d]: url.schema must http/https", i)
-		}
-		if len(table.Columns) == 0 {
-			return fmt.Errorf("table[%d].columns: empty", i)
-		}
-		for j, column := range table.Columns {
-			if column.Name == "" {
-				return fmt.Errorf("table[%d:%s].column[%d]: name is required", i, table.Name, j)
-			}
-			if column.DataType == "" {
-				column.DataType = "TEXT"
-			}
+		if err := table.Restrict(cfg.Schema); err != nil {
+			return fmt.Errorf("table[%d]: %w", i, err)
 		}
 	}
+	return nil
+}
+
+var allowedSchemas = []string{"http", "https"}
+
+func (cfg *TableConfig) Restrict(schema string) error {
+	if cfg.URLString == "" {
+		return fmt.Errorf("url is required")
+	}
+	if cfg.Format == "" {
+		cfg.Format = "csv"
+	}
+	var err error
+	if cfg.URL, err = url.Parse(cfg.URLString); err != nil {
+		return fmt.Errorf("url is invalid: %v", err)
+	}
+	if !lo.Contains(allowedSchemas, cfg.URL.Scheme) {
+		return fmt.Errorf("url.schema must %s", strings.Join(allowedSchemas, "/"))
+	}
+	if !cfg.SchemaDetection {
+		if len(cfg.Columns) == 0 {
+			return fmt.Errorf("columns: empty")
+		}
+	} else {
+		if cfg.DetectedSchemaExpiration == 0 {
+			cfg.DetectedSchemaExpiration = 24 * time.Hour
+		}
+		if err := cfg.DetectSchema(context.Background()); err != nil {
+			return fmt.Errorf("initial schema detect: %w", err)
+		}
+	}
+	if err := cfg.BaseTableConfig.Restrict(schema); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cfg *TableConfig) Fetcher(ctx context.Context) ([][]string, error) {
+	remoteAddr := psqlfront.GetRemoteAddr(ctx)
+	log.Printf("[debug][%s] http request: GET %s", remoteAddr, cfg.URL)
+	resp, err := http.Get(cfg.URL.String())
+	if err != nil {
+		return nil, fmt.Errorf("GET %s failed: %v", cfg.URL, err)
+	}
+	if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("GET %s failed: %d %s", cfg.URL, resp.StatusCode, resp.Status)
+	}
+	defer resp.Body.Close()
+	tr := origin.ConvertTextEncoding(resp.Body, cfg.TextEncoding)
+	switch cfg.Format {
+	case "csv", "CSV":
+		reader := csv.NewReader(tr)
+		return reader.ReadAll()
+	}
+	return nil, errors.New("unexpected format")
+}
+
+func (cfg *TableConfig) FetchRows(ctx context.Context) ([][]interface{}, error) {
+	return cfg.BaseTableConfig.FetchRows(ctx, cfg.Fetcher, cfg.IgnoreLines)
+}
+
+func (cfg *TableConfig) DetectSchema(ctx context.Context) error {
+	now := flextime.Now()
+	if now.Sub(cfg.LastSchemaDetection) < cfg.DetectedSchemaExpiration {
+		return nil
+	}
+	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.IgnoreLines); err != nil {
+		return err
+	}
+	cfg.LastSchemaDetection = now
 	return nil
 }
 
@@ -195,19 +192,4 @@ func (cfg *OriginConfig) NewOrigin(id string) (psqlfront.Origin, error) {
 		schema: cfg.Schema,
 		tables: cfg.Tables,
 	}, nil
-}
-
-func (cfg *TableConfig) toTableInfo(schema string) *psqlfront.Table {
-	return &psqlfront.Table{
-		SchemaName: schema,
-		RelName:    cfg.Name,
-		Columns: lo.Map(cfg.Columns, func(column *ColumnConfig, _ int) *psqlfront.Column {
-			return &psqlfront.Column{
-				Name:      column.Name,
-				DataType:  column.DataType,
-				Length:    column.DataLength,
-				Contraint: column.Contraint,
-			}
-		}),
-	}
 }
