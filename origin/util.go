@@ -82,7 +82,9 @@ func PerformSchemaInference(rows [][]string, ignoreLines int) (ColumnConfigs, er
 		}
 		data := make([]string, 0, len(rows))
 		for _, row := range rows {
-			data = append(data, row[index])
+			if index < len(row) {
+				data = append(data, row[index])
+			}
 		}
 		column.DataType, column.DataLength, column.Contraint = detectTypeInfo(data)
 		columns = append(columns, column)
