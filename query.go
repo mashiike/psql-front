@@ -48,6 +48,7 @@ func AnalyzeQuery(query string) ([]*Table, error) {
 		return nil, err
 	}
 	tables := make([]*Table, 0, len(fromClauses))
+	var refClass, refNamespace bool
 	for _, fromClause := range fromClauses {
 		rangeVars, err := findJSONValues[map[string]interface{}](fromClause, "RangeVar")
 		if err != nil {
@@ -72,9 +73,98 @@ func AnalyzeQuery(query string) ([]*Table, error) {
 				table.SchemaName = "public"
 			}
 			tables = append(tables, table)
+			if strings.EqualFold(relname, "pg_namespace") {
+				refNamespace = true
+			}
+			if strings.EqualFold(relname, "pg_class") {
+				refClass = true
+			}
 		}
 	}
-
+	if !refClass || !refNamespace {
+		return tables, nil
+	}
+	//extra check
+	whereClauses, err := findJSONValues[map[string]interface{}](obj, "whereClause")
+	if err != nil {
+		return nil, err
+	}
+	if len(whereClauses) == 0 {
+		return tables, nil
+	}
+	whereClause, ok := whereClauses[0]["BoolExpr"].(map[string]interface{})
+	if !ok {
+		return tables, nil
+	}
+	op, ok := whereClause["boolop"]
+	if !ok {
+		return tables, nil
+	}
+	if op != "AND_EXPR" {
+		return tables, nil
+	}
+	args, ok := whereClause["args"].([]interface{})
+	if !ok {
+		return tables, nil
+	}
+	var schemaName, relName string
+	log.Println("[debug] extruct schema and relname condition")
+	for i, arg := range args {
+		var refNspname, refRelname bool
+		columnRefs, err := findJSONValues[map[string]interface{}](arg, "ColumnRef")
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("[debug] args[%d] %d columnRef ", i, len(columnRefs))
+		for _, columnRef := range columnRefs {
+			strs, err := findJSONValues[string](columnRef, "str")
+			if err != nil {
+				return nil, err
+			}
+			log.Printf("[debug] columnRef strs %v", strs)
+			if lo.ContainsBy(strs, func(s string) bool { return strings.EqualFold(s, "nspname") }) {
+				refNspname = true
+				break
+			}
+			if lo.ContainsBy(strs, func(s string) bool { return strings.EqualFold(s, "relname") }) {
+				refRelname = true
+				break
+			}
+		}
+		if !refNspname && !refRelname {
+			log.Printf("[debug] args[%d] not shema or relname condition ", i)
+			continue
+		}
+		aConsts, err := findJSONValues[map[string]interface{}](arg, "A_Const")
+		if err != nil {
+			return nil, err
+		}
+		for _, aConst := range aConsts {
+			strs, err := findJSONValues[string](aConst, "str")
+			if err != nil {
+				return nil, err
+			}
+			if len(strs) == 0 {
+				continue
+			}
+			if refNspname {
+				schemaName = strs[0]
+				log.Printf("[debug] args[%d] nspname=%s", i, schemaName)
+				break
+			}
+			if refRelname {
+				relName = strs[0]
+				log.Printf("[debug] args[%d] relname=%s", i, relName)
+				break
+			}
+		}
+	}
+	if schemaName != "" && relName != "" {
+		tables = append(tables, &Table{
+			SchemaName: schemaName,
+			RelName:    relName,
+		})
+	}
 	return tables, nil
 }
 

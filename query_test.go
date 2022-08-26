@@ -58,6 +58,42 @@ func TestAnalyzeQuery(t *testing.T) {
 				},
 			},
 		},
+		{
+			casename: "pg_catalog_extra_check",
+			query:    LoadFile(t, "testdata/sql/pg_catalog.sql"),
+			tables: []*psqlfront.Table{
+				{
+					SchemaName: "pg_catalog",
+					RelName:    "pg_namespace",
+				},
+				{
+					SchemaName: "pg_catalog",
+					RelName:    "pg_class",
+				},
+				{
+					SchemaName: "pg_catalog",
+					RelName:    "pg_attribute",
+				},
+				{
+					SchemaName: "example",
+					RelName:    "fuga",
+				},
+			},
+		},
+		{
+			casename: "pg_catalog_list_tables",
+			query:    LoadFile(t, "testdata/sql/pg_catalog_list_tables.sql"),
+			tables: []*psqlfront.Table{
+				{
+					SchemaName: "pg_catalog",
+					RelName:    "pg_namespace",
+				},
+				{
+					SchemaName: "pg_catalog",
+					RelName:    "pg_class",
+				},
+			},
+		},
 	}
 
 	for _, c := range cases {
