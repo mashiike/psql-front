@@ -517,7 +517,7 @@ type cacheWriter struct {
 func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) error {
 
 	columns := lo.Map(w.table.Columns, func(c *Column, _ int) string {
-		return `"` + c.Name + `"`
+		return `"` + strings.ToLower(c.Name) + `"`
 	})
 	q := psqlQueryBuilder.Insert(w.table.String()).Columns(columns...)
 
