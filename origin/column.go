@@ -55,14 +55,14 @@ func (cfgs ColumnConfigs) ToRows(records [][]string, ignoreLines int) [][]interf
 		for i, c := range cfgs {
 			if c.ColumnIndex != nil {
 				if *c.ColumnIndex < len(record) {
-					row = append(row, toDBValue(c.DataType, record[*c.ColumnIndex]))
+					row = append(row, toDBValue(c.DataType, c.Contraint, record[*c.ColumnIndex]))
 				} else {
 					row = append(row, nil)
 				}
 				continue
 			}
 			if i < len(record) {
-				row = append(row, toDBValue(c.DataType, record[i]))
+				row = append(row, toDBValue(c.DataType, c.Contraint, record[i]))
 			} else {
 				row = append(row, nil)
 			}
@@ -71,7 +71,12 @@ func (cfgs ColumnConfigs) ToRows(records [][]string, ignoreLines int) [][]interf
 	})
 }
 
-func toDBValue(dataType string, value string) interface{} {
+func toDBValue(dataType string, constraint string, value string) interface{} {
+	if value == "" {
+		if !strings.Contains(strings.ToUpper(constraint), "NOT NULL") {
+			return nil
+		}
+	}
 	switch strings.ToUpper(dataType) {
 	case "BIGINT", "INTEGER":
 		if v, err := strconv.ParseInt(value, 10, 64); err == nil {
