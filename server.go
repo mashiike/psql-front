@@ -481,7 +481,7 @@ func (m *cacheMigrator) Migrate(ctx context.Context, t *Table) error {
 	if m.table.String() != t.String() {
 		return errors.New("table name is missmatch")
 	}
-	if err := m.migrator.ExecuteMigrationForTargetTables([]*Table{t}); err != nil {
+	if err := m.migrator.ExecuteMigrationForTargetTables([]*Table{t}, "DELETE FROM "+t.String()); err != nil {
 		return err
 	}
 	m.table.Columns = t.Columns
