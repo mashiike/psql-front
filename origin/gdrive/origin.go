@@ -203,7 +203,13 @@ func (cfg *TableConfig) Restrict(schema string, driveSvc *drive.Service, sheetsS
 			cfg.DetectedSchemaExpiration = 24 * time.Hour
 		}
 		if err := cfg.DetectSchema(context.Background()); err != nil {
-			return fmt.Errorf("initial schema detect: %w", err)
+			log.Printf("[warn] %s.%s initial schema detection failed: %v", schema, cfg.Name, err)
+			cfg.Columns = origin.ColumnConfigs{
+				{
+					Name:     "dummy",
+					DataType: "VARCHAR",
+				},
+			}
 		}
 	}
 	if err := cfg.BaseTableConfig.Restrict(schema); err != nil {
