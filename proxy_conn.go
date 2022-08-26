@@ -148,8 +148,9 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 				if conn.opts.onQueryReceivedHandler != nil {
 					if err := conn.opts.onQueryReceivedHandler(egCtx, fm.String, false, &notifier{backend: conn.backend}); err != nil {
 						log.Printf("[error] on query received: %v", err)
-						if err := conn.backend.Send(&pgproto3.NoticeResponse{
-							Severity: "WARNING",
+						if err := conn.backend.Send(&pgproto3.ErrorResponse{
+							Severity: "ERROR",
+							Code:     "58030",
 							Message:  "Failed on query received handler",
 							Detail:   err.Error(),
 						}); err != nil {
@@ -162,8 +163,9 @@ func (conn *ProxyConn) Run(ctx context.Context) error {
 				if conn.opts.onQueryReceivedHandler != nil {
 					if err := conn.opts.onQueryReceivedHandler(egCtx, fm.Query, true, &notifier{backend: conn.backend}); err != nil {
 						log.Printf("[error] on query received: %v", err)
-						if err := conn.backend.Send(&pgproto3.NoticeResponse{
-							Severity: "WARNING",
+						if err := conn.backend.Send(&pgproto3.ErrorResponse{
+							Severity: "ERROR",
+							Code:     "58030",
 							Message:  "Failed on query received handler",
 							Detail:   err.Error(),
 						}); err != nil {
