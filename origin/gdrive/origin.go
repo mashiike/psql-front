@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -136,6 +137,9 @@ func (cfg *OriginConfig) Restrict() error {
 		option.WithScopes(
 			drive.DriveReadonlyScope,
 		),
+	}
+	if credentials := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"); credentials != "" {
+		gcpOpts = append(gcpOpts, option.WithCredentialsJSON([]byte(credentials)))
 	}
 	driveSvc, err := drive.NewService(ctx, gcpOpts...)
 	if err != nil {
