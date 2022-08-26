@@ -79,12 +79,15 @@ func (m *Migrator) ExecuteMigration(tables []*Table) error {
 	return m.executeMigration(desiredDDLs, beforeApply, nil)
 }
 
-func (m *Migrator) ExecuteMigrationForTargetTables(tables []*Table) error {
+func (m *Migrator) ExecuteMigrationForTargetTables(tables []*Table, preHook ...string) error {
 	desiredDDLs, err := m.GenerateDesiredDDLs(tables)
 	if err != nil {
 		return err
 	}
 	beforeApply := m.GenerateCreateSchemaStmt(tables)
+	for _, h := range preHook {
+		beforeApply += "\n" + h + ";"
+	}
 	return m.executeMigration(desiredDDLs, beforeApply, tables)
 }
 

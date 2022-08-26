@@ -33,3 +33,8 @@ origins:
           - name: value
             data_type: INTEGER
             constraint: NOT NULL
+      - name: hoge
+        url: "{{ must_env `ORIGIN_SERVER_URL` }}/hoge"
+        format: csv
+        ignore_lines: 1
+        schema_detection: true

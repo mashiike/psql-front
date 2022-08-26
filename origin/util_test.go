@@ -190,6 +190,36 @@ func TestPerformSchemaInference(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "null",
+			rows: [][]string{
+				{"id", "name", "name"},
+				{"1", "平塚 えみ", "manager"},
+				{"", "", ""},
+				{"3", "平成 太郎", "takumi"},
+				{"4", "令和 みすず", "enginner"},
+			},
+			ignoreLines: 1,
+			expected: origin.ColumnConfigs{
+				{
+					Name:        "id",
+					DataType:    "BIGINT",
+					ColumnIndex: pointer(0),
+				},
+				{
+					Name:        "name",
+					DataType:    "VARCHAR",
+					DataLength:  pointer(64),
+					ColumnIndex: pointer(1),
+				},
+				{
+					Name:        "name1",
+					DataType:    "VARCHAR",
+					DataLength:  pointer(64),
+					ColumnIndex: pointer(2),
+				},
+			},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

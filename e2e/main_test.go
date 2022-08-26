@@ -61,6 +61,25 @@ var serverTestCases = []serverTestCase{
 			require.EqualValues(t, expected, actual)
 		},
 	},
+	{
+		Name: "select example.hoge",
+		TestFunc: func(t *testing.T, ctx context.Context, conn *pgx.Conn) {
+			rows, err := conn.Query(ctx, "SELECT * FROM example.hoge")
+			require.NoError(t, err)
+			actual := make([][]interface{}, 0)
+			for rows.Next() {
+				values, err := rows.Values()
+				log.Printf("[notice] test rows=[%v]", values)
+				require.NoError(t, err)
+				actual = append(actual, values)
+			}
+			expected := [][]interface{}{
+				{time.Date(2022, 8, 11, 0, 0, 0, 0, time.UTC), "山の日", int64(25), true},
+				{time.Date(2022, 8, 12, 0, 0, 0, 0, time.UTC), nil, nil, false},
+			}
+			require.EqualValues(t, expected, actual)
+		},
+	},
 }
 
 func (c *serverTestCase) Run(t *testing.T, ctx context.Context, cfg *psqlfront.Config, addr string) {
@@ -112,6 +131,16 @@ func TestServer(t *testing.T) {
 			{"ymd", "name", "vaule"},
 			{"2022-01-01", "正月", "0"},
 			{"2022-01-02", "なにもない日", "1"},
+		})
+	}))
+	mux.HandleFunc("/hoge", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/csv")
+		w.WriteHeader(http.StatusOK)
+		writer := csv.NewWriter(w)
+		writer.WriteAll([][]string{
+			{"ymd", "name", "vaule", "is_holiday"},
+			{"2022-08-11", "山の日", "25", "true"},
+			{"2022-08-12", "", "", "false"},
 		})
 	}))
 	originServer := httptest.NewServer(mux)

@@ -129,6 +129,9 @@ func detectTypeInfo(data []string) (string, *int, string) {
 		if len(dataTypeCandidates) <= 1 && maxLength == limitMaxLength {
 			return "VARCHAR", &maxLength, ""
 		}
+		if d == "" {
+			continue
+		}
 		if index >= 10000 {
 			break
 		}
