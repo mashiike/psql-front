@@ -3,7 +3,7 @@ module github.com/mashiike/psql-front
 go 1.19
 
 require (
-	cloud.google.com/go/storage v1.25.0
+	cloud.google.com/go/storage v1.26.0
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/Songmu/flextime v0.1.0
 	github.com/Songmu/go-ltsv v0.1.0
