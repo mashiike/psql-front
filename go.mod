@@ -25,7 +25,7 @@ require (
 	github.com/mattn/go-encoding v0.0.2
 	github.com/pganalyze/pg_query_go/v2 v2.1.2
 	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca
-	github.com/samber/lo v1.27.0
+	github.com/samber/lo v1.27.1
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde
 	golang.org/x/text v0.3.7
