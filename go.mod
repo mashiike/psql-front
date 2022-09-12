@@ -29,7 +29,7 @@ require (
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde
 	golang.org/x/text v0.3.7
-	google.golang.org/api v0.94.0
+	google.golang.org/api v0.95.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
