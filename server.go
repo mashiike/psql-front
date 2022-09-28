@@ -547,6 +547,18 @@ func (w *cacheWriter) ReplaceCacheTable(ctx context.Context, t *Table) error {
 }
 
 func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) error {
+	chunk := lo.Chunk(rows, 100)
+	eg, egctx := errgroup.WithContext(ctx)
+	for i := range chunk {
+		r := chunk[i]
+		eg.Go(func() error {
+			return w.appendRows(egctx, r)
+		})
+	}
+	return eg.Wait()
+}
+
+func (w *cacheWriter) appendRows(ctx context.Context, rows [][]interface{}) error {
 
 	columns := lo.Map(w.table.Columns, func(c *Column, _ int) string {
 		return `"` + strings.ToLower(c.Name) + `"`
