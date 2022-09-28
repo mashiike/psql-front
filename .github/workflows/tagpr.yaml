@@ -124,6 +124,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.tagpr.outputs.tag }}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
@@ -137,7 +139,7 @@ jobs:
         uses: docker/metadata-action@v2
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: type=semver,pattern={{raw}}
+          tags: type=semver,pattern={{raw}},value=${{ needs.tagpr.outputs.tag }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
