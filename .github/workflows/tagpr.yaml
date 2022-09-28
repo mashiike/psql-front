@@ -43,7 +43,7 @@ jobs:
           mkdir -p build
           go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
         env:
-          GIT_VER: ${{ github.ref }}
+          GIT_VER: ${{ needs.tagpr.outputs.tag }}
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
       - uses: actions/upload-artifact@v3
@@ -70,7 +70,7 @@ jobs:
           mkdir -p build
           go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
         env:
-          GIT_VER: ${{ github.ref }}
+          GIT_VER: ${{ needs.tagpr.outputs.tag }}
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
       - uses: actions/upload-artifact@v3
@@ -148,4 +148,4 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: Version=${{ github.ref }}
+          build-args: Version=${{ needs.tagpr.outputs.tag }}
