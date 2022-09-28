@@ -38,3 +38,12 @@ origins:
         format: csv
         ignore_lines: 1
         schema_detection: true
+      - name: piyo
+        url: "{{ must_env `ORIGIN_SERVER_URL` }}/trunc"
+        format: csv
+        ignore_lines: 1
+        columns:
+          - name: ym
+            data_type: VARCHAR
+            length: 7
+            constraint: NOT NULL
