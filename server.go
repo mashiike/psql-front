@@ -47,6 +47,8 @@ type Server struct {
 	origins          map[string]Origin
 	originIDsByTable map[string]string
 	tables           map[string]*Table
+	tableCond        map[string]*sync.Cond
+	tableMutex       map[string]*sync.Mutex
 	tlsConfig        *tls.Config
 	idleTimeout      time.Duration
 	upstreamAddr     string
@@ -85,6 +87,8 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		origins:          make(map[string]Origin, len(cfg.Origins)),
 		originIDsByTable: make(map[string]string),
 		tables:           make(map[string]*Table),
+		tableCond:        make(map[string]*sync.Cond),
+		tableMutex:       make(map[string]*sync.Mutex),
 		upstreamAddr:     fmt.Sprintf("%s:%d", cfg.CacheDatabase.Host, cfg.CacheDatabase.Port),
 		statsCfg:         cfg.Stats,
 	}
@@ -177,6 +181,8 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 		for _, table := range t {
 			server.originIDsByTable[table.String()] = origin.ID()
 			server.tables[table.String()] = table
+			server.tableCond[table.String()] = sync.NewCond(&sync.Mutex{})
+			server.tableMutex[table.String()] = &sync.Mutex{}
 			log.Printf("[debug] %s: %d columns", table.String(), len(table.Columns))
 			if table.SchemaName != "public" {
 				sql := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s";`, table.SchemaName)
@@ -603,6 +609,30 @@ func (w *cacheWriter) TargetTable() *Table {
 }
 
 func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table) error {
+	remoteAddr := GetRemoteAddr(ctx)
+	cond, ok := server.tableCond[table.String()]
+	if !ok {
+		server.tableCond[table.String()] = sync.NewCond(&sync.Mutex{})
+	}
+	mu, ok := server.tableMutex[table.String()]
+	if !ok {
+		server.tableMutex[table.String()] = &sync.Mutex{}
+	}
+	log.Printf("[debug][%s] lock check for %s", remoteAddr, table)
+	cond.L.Lock()
+	if !mu.TryLock() {
+		log.Printf("[info][%s] wait other refresh for %s ", remoteAddr, table)
+		cond.Wait()
+		log.Printf("[info][%s] finish other refresh for %s ", remoteAddr, table)
+		cond.L.Unlock()
+		return nil
+	}
+	cond.L.Unlock()
+	defer func() {
+		mu.Unlock()
+		cond.Broadcast()
+	}()
+
 	log.Printf("[debug] refresh target %s: %d columns", table.String(), len(table.Columns))
 	originID, ok := server.originIDsByTable[table.String()]
 	if !ok {
