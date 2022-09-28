@@ -65,6 +65,16 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DATABASE_URL: %w", err)
 	}
+	poolConfig.MaxConns = 5
+	poolConfig.MaxConnIdleTime = 600 * time.Second
+	poolConfig.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+		log.Printf("[info] new server pgx connection: pid=%d", c.PgConn().PID())
+		return nil
+	}
+	poolConfig.AfterRelease = func(c *pgx.Conn) bool {
+		log.Printf("[info] release server pgx connection: pid=%d", c.PgConn().PID())
+		return true
+	}
 	db, err := pgxpool.ConnectConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create connection pool: %w", err)
