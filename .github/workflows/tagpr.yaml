@@ -1,0 +1,137 @@
+# .github/workflows/tagpr.yml
+name: tagpr
+on:
+  push:
+    branches: ["main"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  tagpr:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - id: tagpr
+        uses: Songmu/tagpr@v1
+
+  build-linux-bin:
+    needs: [tagpr]
+    if: "needs.tagpr.steps.tagpr.outputs.tag != ''"
+    strategy:
+      matrix:
+        GOARCH: ['amd64']
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.19
+      - name: build bin
+        run: |
+          mkdir -p build
+          go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
+        env:
+          GIT_VER: ${{ github.ref }}
+          GOARCH: ${{ matrix.GOARCH }}
+        shell: bash
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: build/psql-front-*
+  build-macos-bin:
+    if: "needs.tagpr.steps.tagpr.outputs.tag != ''"
+    needs: [tagpr]
+    strategy:
+      matrix:
+        GOARCH: ['amd64']
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.19
+      - name: build bin
+        run: |
+          mkdir -p build
+          go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
+        env:
+          GIT_VER: ${{ github.ref }}
+          GOARCH: ${{ matrix.GOARCH }}
+        shell: bash
+      - uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: build/psql-front-*
+  release-bin:
+    needs: [tagpr, build-linux-bin, build-macos-bin]
+    if: "needs.tagpr.steps.tagpr.outputs.tag != ''"
+    runs-on: ubuntu-latest
+    env:
+      BIN_NAME: psql-front
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: load build
+        id: load_build
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: build
+      - name: archive binaries
+        run: |
+          cd ${{steps.load_build.outputs.download-path}}
+          for file in ./* ; do
+            mkdir $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}') &&
+            cp ${file} $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/${{ env.BIN_NAME }} &&
+            cp ../README.md $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/ &&
+            cp ../LICENSE $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')/ &&
+            tar -zcvf $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}').tar.gz $(echo ${file}|awk -F- '{print "${{ env.BIN_NAME }}_"$(NF-1)"_"$(NF)}')
+          done
+          shasum -a 256 *.tar.gz > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
+          ls -lR ./
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v3
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-and-push-image:
+    needs: [tagpr]
+    if: "needs.tagpr.steps.tagpr.outputs.tag != ''"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v2
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: Version=${{ github.ref }}
