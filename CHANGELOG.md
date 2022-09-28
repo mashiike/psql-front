@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.3.7](https://github.com/mashiike/psql-front/compare/v0.3.6...v0.3.7) - 2022-09-28
+- Faster cache updates by @mashiike in https://github.com/mashiike/psql-front/pull/35
+
 ## [v0.3.6](https://github.com/mashiike/psql-front/compare/v0.3.5...v0.3.6) - 2022-09-28
 
 ## [v0.3.5](https://github.com/mashiike/psql-front/compare/v0.3.4...v0.3.5) - 2022-09-28
