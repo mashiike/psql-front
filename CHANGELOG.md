@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.2.7](https://github.com/mashiike/psql-front/compare/v0.2.6...v0.2.7) - 2022-09-28
+- Full replacement instead of a nice migration. by @mashiike in https://github.com/mashiike/psql-front/pull/27
+
 ## [v0.2.6](https://github.com/mashiike/psql-front/compare/v0.2.5...v0.2.6) - 2022-09-28
 
 ## [v0.2.5](https://github.com/mashiike/psql-front/compare/v0.2.4...v0.2.5) - 2022-09-28
