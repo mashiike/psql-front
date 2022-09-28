@@ -117,11 +117,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: actions/checkout@v3
 
       - name: Log in to the Container registry
-        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
@@ -129,18 +127,16 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for Docker
-        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         id: meta
         uses: docker/metadata-action@v2
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
-        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: Version=${{ github.ref }}
+          build-args: Version=${{ needs.tagpr.outputs.tag }}
