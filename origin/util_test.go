@@ -78,13 +78,13 @@ func TestPerformSchemaInference(t *testing.T) {
 				{
 					Name:        "name",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(1),
 				},
 				{
 					Name:        "role",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
 				},
 				{
@@ -113,19 +113,19 @@ func TestPerformSchemaInference(t *testing.T) {
 				{
 					Name:        "field1",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(0),
 				},
 				{
 					Name:        "field2",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(1),
 				},
 				{
 					Name:        "field3",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
 				},
 			},
@@ -149,13 +149,13 @@ func TestPerformSchemaInference(t *testing.T) {
 				{
 					Name:        "anonymous_field1",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(1),
 				},
 				{
 					Name:        "anonymous_field2",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
 				},
 			},
@@ -179,13 +179,13 @@ func TestPerformSchemaInference(t *testing.T) {
 				{
 					Name:        "name",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(1),
 				},
 				{
 					Name:        "name1",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
 				},
 			},
@@ -209,13 +209,13 @@ func TestPerformSchemaInference(t *testing.T) {
 				{
 					Name:        "name",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(1),
 				},
 				{
 					Name:        "name1",
 					DataType:    "VARCHAR",
-					DataLength:  pointer(64),
+					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
 				},
 			},
