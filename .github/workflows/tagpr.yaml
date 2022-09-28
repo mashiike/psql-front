@@ -23,7 +23,6 @@ jobs:
 
   build-linux-bin:
     needs: [tagpr]
-    if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
     strategy:
       matrix:
         GOARCH: ['amd64']
@@ -31,10 +30,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
       - uses: actions/setup-go@v2
         with:
           go-version: 1.19
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
       - name: build bin
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         run: |
           mkdir -p build
           go build -o build/psql-front-linux-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
@@ -43,11 +45,11 @@ jobs:
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
       - uses: actions/upload-artifact@v3
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         with:
           name: build
           path: build/psql-front-*
   build-macos-bin:
-    if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
     needs: [tagpr]
     strategy:
       matrix:
@@ -55,11 +57,15 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: actions/checkout@v3
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
       - uses: actions/setup-go@v2
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         with:
           go-version: 1.19
       - name: build bin
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         run: |
           mkdir -p build
           go build -o build/psql-front-darwin-$GOARCH -ldflags "-s -w -X github.com/mashiike/psql-front.Version=$GIT_VER" cmd/psql-front/*.go
@@ -68,25 +74,29 @@ jobs:
           GOARCH: ${{ matrix.GOARCH }}
         shell: bash
       - uses: actions/upload-artifact@v3
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         with:
           name: build
           path: build/psql-front-*
   release-bin:
     needs: [tagpr, build-linux-bin, build-macos-bin]
-    if: "needs.tagpr.steps.tagpr.outputs.tag != ''"
     runs-on: ubuntu-latest
     env:
       BIN_NAME: psql-front
     steps:
       - name: Checkout repository
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: actions/checkout@v3
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
       - name: load build
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         id: load_build
         uses: actions/download-artifact@v3
         with:
           name: build
           path: build
       - name: archive binaries
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         run: |
           cd ${{steps.load_build.outputs.download-path}}
           for file in ./* ; do
@@ -99,6 +109,7 @@ jobs:
           shasum -a 256 *.tar.gz > ${{ env.BIN_NAME }}_${{ steps.set-tag.outputs.version }}_checksums.txt
           ls -lR ./
       - name: Run GoReleaser
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
@@ -107,7 +118,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   build-and-push-image:
     needs: [tagpr]
-    if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -115,9 +125,11 @@ jobs:
 
     steps:
       - name: Checkout repository
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: actions/checkout@v3
 
       - name: Log in to the Container registry
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
@@ -125,12 +137,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for Docker
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         id: meta
         uses: docker/metadata-action@v2
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
+        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: docker/build-push-action@v3
         with:
           context: .
