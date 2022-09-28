@@ -123,7 +123,7 @@ func asTimestamp(str string) bool {
 const limitMaxLength = 65535
 
 func detectTypeInfo(data []string) (string, *int, string) {
-	maxLength := 64
+	maxLength := 256
 	dataTypeCandidates := map[string]bool{"VARCHAR": true, "DATE": true, "TIMESTAMP": true, "BOOLEAN": true, "BIGINT": true, "FLOAT": true}
 	for index, d := range data {
 		if len(dataTypeCandidates) <= 1 && maxLength == limitMaxLength {
