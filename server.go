@@ -528,7 +528,7 @@ func (w *cacheWriter) ReplaceCacheTable(ctx context.Context, t *Table) error {
 	if err != nil {
 		return err
 	}
-	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS "%s"`, t.String())
+	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS %s`, t.String())
 
 	log.Printf("[debug] execute: %s;", dropSQL)
 	tag, err := w.tx.Exec(ctx, dropSQL)
