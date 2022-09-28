@@ -1,8 +1,11 @@
 package psqlfront
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"errors"
 	"fmt"
 	"log"
@@ -65,8 +68,6 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DATABASE_URL: %w", err)
 	}
-	poolConfig.MaxConns = 5
-	poolConfig.MaxConnIdleTime = 600 * time.Second
 	poolConfig.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
 		log.Printf("[debug] new server pgx connection: pid=%d", c.PgConn().PID())
 		return nil
@@ -137,10 +138,38 @@ func GetRemoteAddr(ctx context.Context) string {
 	return "-"
 }
 
+//go:embed sql/psqlfront.sql
+var systemTableDDL string
+
 func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
 	log.Printf("[notice] start psql-front running version: %s", Version)
 	server.startedAt = flextime.Now()
 	defer listener.Close()
+
+	scanner := bufio.NewScanner(strings.NewReader(systemTableDDL))
+	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if i := bytes.IndexByte(data, ';'); i >= 0 {
+			return i + 1, data[0:i], nil
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+	for scanner.Scan() {
+		sql := strings.TrimSpace(scanner.Text())
+		if sql == "" {
+			continue
+		}
+		log.Println("[debug]", sql)
+		if _, err := server.db.Exec(ctx, sql); err != nil {
+			return err
+		}
+	}
+
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {
 		t, err := origin.GetTables(ctx)
@@ -151,11 +180,23 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 			server.originIDsByTable[table.String()] = origin.ID()
 			server.tables[table.String()] = table
 			log.Printf("[debug] %s: %d columns", table.String(), len(table.Columns))
+			if table.SchemaName != "public" {
+				sql := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s";`, table.SchemaName)
+				log.Println("[debug]", sql)
+				if _, err := server.db.Exec(ctx, sql); err != nil {
+					return err
+				}
+			}
+			ddl, err := table.GenerateDDL()
+			if err != nil {
+				return err
+			}
+			log.Println("[debug]", ddl)
+			if _, err := server.db.Exec(ctx, ddl); err != nil {
+				return err
+			}
 		}
 		tables = append(tables, t...)
-	}
-	if err := server.migrator.ExecuteMigration(tables); err != nil {
-		return fmt.Errorf("execute migration:%w", err)
 	}
 	if err := server.analezeTables(ctx, tables); err != nil {
 		return fmt.Errorf("execute initial analyze:%w", err)
