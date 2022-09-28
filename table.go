@@ -41,5 +41,5 @@ func (t *Table) GenerateDDL() (string, error) {
 			fields = append(fields, strings.Join([]string{`"` + strings.ToLower(column.Name) + `"`, column.DataType, column.Contraint}, " "))
 		}
 	}
-	return fmt.Sprintf("CREATE TABLE %s (\n    %s\n);", t, strings.Join(fields, ",\n    ")), nil
+	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n    %s\n);", t, strings.Join(fields, ",\n    ")), nil
 }

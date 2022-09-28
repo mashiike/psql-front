@@ -1,8 +1,11 @@
 package psqlfront
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"errors"
 	"fmt"
 	"log"
@@ -44,7 +47,6 @@ type Server struct {
 	origins          map[string]Origin
 	originIDsByTable map[string]string
 	tables           map[string]*Table
-	migrator         *Migrator
 	tlsConfig        *tls.Config
 	idleTimeout      time.Duration
 	upstreamAddr     string
@@ -65,6 +67,14 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DATABASE_URL: %w", err)
 	}
+	poolConfig.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+		log.Printf("[debug] new server pgx connection: pid=%d", c.PgConn().PID())
+		return nil
+	}
+	poolConfig.AfterRelease = func(c *pgx.Conn) bool {
+		log.Printf("[debug] release server pgx connection: pid=%d", c.PgConn().PID())
+		return true
+	}
 	db, err := pgxpool.ConnectConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create connection pool: %w", err)
@@ -75,7 +85,6 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 		origins:          make(map[string]Origin, len(cfg.Origins)),
 		originIDsByTable: make(map[string]string),
 		tables:           make(map[string]*Table),
-		migrator:         NewMigrator(cfg.CacheDatabase),
 		upstreamAddr:     fmt.Sprintf("%s:%d", cfg.CacheDatabase.Host, cfg.CacheDatabase.Port),
 		statsCfg:         cfg.Stats,
 	}
@@ -127,10 +136,38 @@ func GetRemoteAddr(ctx context.Context) string {
 	return "-"
 }
 
+//go:embed sql/psqlfront.sql
+var systemTableDDL string
+
 func (server *Server) RunWithContextAndListener(ctx context.Context, listener net.Listener) error {
 	log.Printf("[notice] start psql-front running version: %s", Version)
 	server.startedAt = flextime.Now()
 	defer listener.Close()
+
+	scanner := bufio.NewScanner(strings.NewReader(systemTableDDL))
+	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
+		}
+		if i := bytes.IndexByte(data, ';'); i >= 0 {
+			return i + 1, data[0:i], nil
+		}
+		if atEOF {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
+	for scanner.Scan() {
+		sql := strings.TrimSpace(scanner.Text())
+		if sql == "" {
+			continue
+		}
+		log.Println("[debug]", sql)
+		if _, err := server.db.Exec(ctx, sql); err != nil {
+			return err
+		}
+	}
+
 	tables := make([]*Table, 0, len(server.origins))
 	for _, origin := range server.origins {
 		t, err := origin.GetTables(ctx)
@@ -141,11 +178,23 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 			server.originIDsByTable[table.String()] = origin.ID()
 			server.tables[table.String()] = table
 			log.Printf("[debug] %s: %d columns", table.String(), len(table.Columns))
+			if table.SchemaName != "public" {
+				sql := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s";`, table.SchemaName)
+				log.Println("[debug]", sql)
+				if _, err := server.db.Exec(ctx, sql); err != nil {
+					return err
+				}
+			}
+			ddl, err := table.GenerateDDL()
+			if err != nil {
+				return err
+			}
+			log.Println("[debug]", ddl)
+			if _, err := server.db.Exec(ctx, ddl); err != nil {
+				return err
+			}
 		}
 		tables = append(tables, t...)
-	}
-	if err := server.migrator.ExecuteMigration(tables); err != nil {
-		return fmt.Errorf("execute migration:%w", err)
 	}
 	if err := server.analezeTables(ctx, tables); err != nil {
 		return fmt.Errorf("execute initial analyze:%w", err)
@@ -333,14 +382,6 @@ func (server *Server) controlCache(ctx context.Context, query string, refarenced
 	for _, noHitTable := range noHitTables {
 		t := noHitTable
 		eg.Go(func() error {
-			if err := server.migrateCacheTable(egctx, t); err != nil {
-				log.Printf("[warn][%s] %s can not migrate cache table: %v", remoteAddr, t, err)
-				var onfe *OriginNotFoundError
-				if !errors.As(err, &onfe) {
-					return fmt.Errorf("migrate cache table:%w", err)
-				}
-				return nil
-			}
 			tx, err := server.db.Begin(egctx)
 			log.Printf("[debug] start `%s` tx", t.String())
 			if err != nil {
@@ -472,46 +513,37 @@ func (server *Server) getCacheInfo(ctx context.Context, tables []*Table) (map[st
 	return result, nil
 }
 
-type cacheMigrator struct {
-	migrator *Migrator
-	table    *Table
-}
-
-func (m *cacheMigrator) Migrate(ctx context.Context, t *Table) error {
-	if m.table.String() != t.String() {
-		return errors.New("table name is missmatch")
-	}
-	if err := m.migrator.ExecuteMigrationForTargetTables([]*Table{t}, "DELETE FROM "+t.String()); err != nil {
-		return err
-	}
-	m.table.Columns = t.Columns
-	m.table.Constraints = t.Constraints
-	return nil
-}
-
-func (server *Server) migrateCacheTable(ctx context.Context, table *Table) error {
-	log.Printf("[debug] migrate target %s", table.String())
-	originID, ok := server.originIDsByTable[table.String()]
-	if !ok {
-		return WrapOriginNotFoundError(fmt.Errorf("table %s not found", table))
-	}
-	origin, ok := server.origins[originID]
-	if !ok {
-		return WrapOriginNotFoundError(fmt.Errorf("origin %s not found", table))
-	}
-	err := origin.MigrateTable(ctx, &cacheMigrator{
-		migrator: server.migrator,
-		table:    table,
-	}, table)
-	if err != nil {
-		return fmt.Errorf("origin %s, table %s migrate table:%w", originID, table, err)
-	}
-	return nil
-}
-
 type cacheWriter struct {
 	tx    pgx.Tx
 	table *Table
+}
+
+func (w *cacheWriter) ReplaceCacheTable(ctx context.Context, t *Table) error {
+	if w.table.String() != t.String() {
+		return errors.New("table name is missmatch")
+	}
+	w.table.Columns = t.Columns
+	w.table.Constraints = t.Constraints
+	ddl, err := w.table.GenerateDDL()
+	if err != nil {
+		return err
+	}
+	dropSQL := fmt.Sprintf(`DROP TABLE IF EXISTS %s`, t.String())
+
+	log.Printf("[debug] execute: %s;", dropSQL)
+	tag, err := w.tx.Exec(ctx, dropSQL)
+	if err != nil {
+		return fmt.Errorf("execute drop table `%s` query:%w", w.table, err)
+	}
+	log.Printf("[info] %s %s", w.table, tag.String())
+
+	log.Printf("[debug] execute: %s;", ddl)
+	tag, err = w.tx.Exec(ctx, ddl)
+	if err != nil {
+		return fmt.Errorf("execute create table `%s` query:%w", w.table, err)
+	}
+	log.Printf("[info] %s %s", w.table, tag.String())
+	return nil
 }
 
 func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) error {
@@ -540,6 +572,24 @@ func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) erro
 	return nil
 }
 
+func (w *cacheWriter) DeleteRows(ctx context.Context) error {
+	sql, args, err := psqlQueryBuilder.Delete(w.table.String()).ToSql()
+	if err != nil {
+		return fmt.Errorf("build delete from `%s` query:%w", w.table, err)
+	}
+	log.Printf("[debug] execute: %s; %v", sql, args)
+	tag, err := w.tx.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("execute delete from `%s` query:%w", w.table, err)
+	}
+	log.Printf("[info] %s %d rows deleted", w.table, tag.RowsAffected())
+	return nil
+}
+
+func (w *cacheWriter) TargetTable() *Table {
+	return w.table
+}
+
 func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table) error {
 	log.Printf("[debug] refresh target %s: %d columns", table.String(), len(table.Columns))
 	originID, ok := server.originIDsByTable[table.String()]
@@ -550,21 +600,11 @@ func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table)
 	if !ok {
 		return WrapOriginNotFoundError(fmt.Errorf("origin %s not found", table))
 	}
-	sql, args, err := psqlQueryBuilder.Delete(table.String()).ToSql()
-	if err != nil {
-		return fmt.Errorf("build delete from `%s` query:%w", table, err)
-	}
-	log.Printf("[debug] execute: %s; %v", sql, args)
-	tag, err := tx.Exec(ctx, sql, args...)
-	if err != nil {
-		return fmt.Errorf("execute delete from `%s` query:%w", table, err)
-	}
-	log.Printf("[info] %s %d rows deleted", table, tag.RowsAffected())
-	log.Printf("[info] get rows from origin `%s`", originID)
-	err = origin.GetRows(ctx, &cacheWriter{
+	log.Printf("[info] refresh cache origin `%s`", originID)
+	err := origin.RefreshCache(ctx, &cacheWriter{
 		tx:    tx,
 		table: table,
-	}, table)
+	})
 	if err != nil {
 		return fmt.Errorf("origin %s, table %s get rows:%w", originID, table, err)
 	}
@@ -572,7 +612,7 @@ func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table)
 	if !ok {
 		return fmt.Errorf("%s's ttl not found", originID)
 	}
-	sql, args, err = psqlQueryBuilder.Insert(cacheLifecycleTable.String()).Columns(
+	sql, args, err := psqlQueryBuilder.Insert(cacheLifecycleTable.String()).Columns(
 		"schema_name",
 		"table_name",
 		"origin_id",
@@ -591,7 +631,7 @@ func (server *Server) refreshCache(ctx context.Context, tx pgx.Tx, table *Table)
 		return fmt.Errorf("build cache upsert `%s` query:%w", table, err)
 	}
 	log.Printf("[debug] execute: %s; %v", sql, args)
-	tag, err = tx.Exec(ctx, sql, args...)
+	tag, err := tx.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("execute cache upsert `%s` query:%w", table, err)
 	}

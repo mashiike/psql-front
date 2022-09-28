@@ -19,15 +19,15 @@ func (o *DummyOrigin) ID() string {
 	return o.id
 }
 
-func (o *DummyOrigin) MigrateTable(ctx context.Context, _ psqlfront.CacheMigrator, _ *psqlfront.Table) error {
-	return nil
-}
-
 func (o *DummyOrigin) GetTables(ctx context.Context) ([]*psqlfront.Table, error) {
 	return o.tables, nil
 }
 
-func (o *DummyOrigin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
+func (o *DummyOrigin) RefreshCache(ctx context.Context, w psqlfront.CacheWriter) error {
+	table := w.TargetTable()
+	if err := w.DeleteRows(ctx); err != nil {
+		return err
+	}
 	row := make([]interface{}, 0, len(table.Columns))
 	for _, c := range table.Columns {
 		row = append(row, "value_"+c.Name)

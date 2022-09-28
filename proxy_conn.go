@@ -260,6 +260,10 @@ func (conn *ProxyConn) wrapError(ctx context.Context, err error, msg string, arg
 		log.Printf("[debug][%s] err but context.Done(): %v", conn.client.RemoteAddr(), err)
 		return nil
 	default:
+		if err.Error() == "unexpected EOF" {
+			log.Printf("[warn][%s] unexpected EOF connection was lost", conn.client.RemoteAddr())
+			return nil
+		}
 		args = append(args, err)
 		return fmt.Errorf(msg+":%w", args...)
 	}
@@ -272,12 +276,27 @@ func (conn *ProxyConn) close() {
 	if conn.cancel != nil {
 		conn.cancel()
 	}
+	remoteAddr := "-"
 	if conn.client != nil {
-		conn.client.Close()
+		remoteAddr = conn.client.RemoteAddr().String()
+		log.Printf("[debug][%s] try client close", remoteAddr)
+		if err := conn.client.Close(); err != nil {
+			log.Printf("[error][%s] client close: %v", remoteAddr, err)
+		} else {
+			log.Printf("[info][%s] client close", remoteAddr)
+		}
+
 	}
 	if conn.upstream != nil {
-		conn.frontend.Send(&pgproto3.Terminate{})
-		conn.upstream.Close()
+		log.Printf("[debug][%s] try upstream close", remoteAddr)
+		if err := conn.frontend.Send(&pgproto3.Terminate{}); err != nil {
+			log.Printf("[error][%s] upstream send terminate close: %v", remoteAddr, err)
+		}
+		if err := conn.upstream.Close(); err != nil {
+			log.Printf("[error][%s] upstream close: %v", remoteAddr, err)
+		} else {
+			log.Printf("[info][%s] upstream close", remoteAddr)
+		}
 	}
 	conn.isClosed = true
 }

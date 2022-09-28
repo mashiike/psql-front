@@ -30,15 +30,15 @@ func (o *Origin) ID() string {
 	return o.id
 }
 
-func (o *Origin) MigrateTable(ctx context.Context, _ psqlfront.CacheMigrator, _ *psqlfront.Table) error {
-	return nil
-}
-
 func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
 	return o.tables, nil
 }
 
-func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
+func (o *Origin) RefreshCache(ctx context.Context, w psqlfront.CacheWriter) error {
+	table := w.TargetTable()
+	if err := w.DeleteRows(ctx); err != nil {
+		return err
+	}
 	rows, ok := o.rows[table.String()]
 	if !ok {
 		psqlfront.WrapOriginNotFoundError(errors.New("table not found"))

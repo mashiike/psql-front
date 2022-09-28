@@ -50,8 +50,8 @@ func (o *Origin) GetTables(_ context.Context) ([]*psqlfront.Table, error) {
 	}), nil
 }
 
-func (o *Origin) MigrateTable(ctx context.Context, m psqlfront.CacheMigrator, table *psqlfront.Table) error {
-	remoteAddr := psqlfront.GetRemoteAddr(ctx)
+func (o *Origin) RefreshCache(ctx context.Context, w psqlfront.CacheWriter) error {
+	table := w.TargetTable()
 	if o.schema != table.SchemaName {
 		return psqlfront.WrapOriginNotFoundError(errors.New("origin schema is missmatch"))
 	}
@@ -59,37 +59,30 @@ func (o *Origin) MigrateTable(ctx context.Context, m psqlfront.CacheMigrator, ta
 		if t.Name != table.RelName {
 			continue
 		}
-		if !t.SchemaDetection {
-			log.Printf("[debug][%s] no schema detection: file_id=%s", remoteAddr, t.FileID)
-			return nil
-		}
-		if err := t.DetectSchema(ctx); err != nil {
+		return o.refreshCache(ctx, w, t)
+	}
+	return psqlfront.WrapOriginNotFoundError(errors.New("origin table not found"))
+}
+
+func (o *Origin) refreshCache(ctx context.Context, w psqlfront.CacheWriter, cfg *TableConfig) error {
+	remoteAddr := psqlfront.GetRemoteAddr(ctx)
+	if cfg.SchemaDetection {
+		if err := cfg.DetectSchema(ctx); err != nil {
 			return err
 		}
-		return m.Migrate(ctx, t.ToTable())
-	}
-	return psqlfront.WrapOriginNotFoundError(errors.New("origin table not found"))
-}
-
-func (o *Origin) GetRows(ctx context.Context, w psqlfront.CacheWriter, table *psqlfront.Table) error {
-	if o.schema != table.SchemaName {
-		return psqlfront.WrapOriginNotFoundError(errors.New("origin schema is missmatch"))
-	}
-	for _, t := range o.tables {
-		if t.Name != table.RelName {
-			continue
+		if err := w.ReplaceCacheTable(ctx, cfg.ToTable()); err != nil {
+			return err
 		}
-		return o.getRows(ctx, w, t, table)
+	} else {
+		if err := w.DeleteRows(ctx); err != nil {
+			return err
+		}
 	}
-	return psqlfront.WrapOriginNotFoundError(errors.New("origin table not found"))
-}
 
-func (o *Origin) getRows(ctx context.Context, w psqlfront.CacheWriter, cfg *TableConfig, table *psqlfront.Table) error {
-	remoteAddr := psqlfront.GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] get rows: file_id=%s", remoteAddr, cfg.FileID)
 	rows, err := cfg.FetchRows(ctx)
 	if err != nil {
-		return fmt.Errorf("try get %s origin: %w", table.String(), err)
+		return fmt.Errorf("try get %s origin: %w", w.TargetTable().String(), err)
 	}
 	return w.AppendRows(ctx, rows)
 }
