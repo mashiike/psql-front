@@ -8,18 +8,16 @@ import (
 )
 
 type CacheWriter interface {
+	DeleteRows(ctx context.Context) error
+	ReplaceCacheTable(ctx context.Context, t *Table) error
 	AppendRows(context.Context, [][]interface{}) error
-}
-
-type CacheMigrator interface {
-	Migrate(context.Context, *Table) error
+	TargetTable() *Table
 }
 
 type Origin interface {
 	ID() string
 	GetTables(ctx context.Context) ([]*Table, error)
-	MigrateTable(context.Context, CacheMigrator, *Table) error
-	GetRows(context.Context, CacheWriter, *Table) error
+	RefreshCache(context.Context, CacheWriter) error
 }
 
 type OriginConfig interface {
