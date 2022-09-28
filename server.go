@@ -68,11 +68,11 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 	poolConfig.MaxConns = 5
 	poolConfig.MaxConnIdleTime = 600 * time.Second
 	poolConfig.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
-		log.Printf("[info] new server pgx connection: pid=%d", c.PgConn().PID())
+		log.Printf("[debug] new server pgx connection: pid=%d", c.PgConn().PID())
 		return nil
 	}
 	poolConfig.AfterRelease = func(c *pgx.Conn) bool {
-		log.Printf("[info] release server pgx connection: pid=%d", c.PgConn().PID())
+		log.Printf("[debug] release server pgx connection: pid=%d", c.PgConn().PID())
 		return true
 	}
 	db, err := pgxpool.ConnectConfig(ctx, poolConfig)
