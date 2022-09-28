@@ -260,6 +260,10 @@ func (conn *ProxyConn) wrapError(ctx context.Context, err error, msg string, arg
 		log.Printf("[debug][%s] err but context.Done(): %v", conn.client.RemoteAddr(), err)
 		return nil
 	default:
+		if err.Error() == "unexpected EOF" {
+			log.Printf("[warn][%s] unexpected EOF connection was lost", conn.client.RemoteAddr())
+			return nil
+		}
 		args = append(args, err)
 		return fmt.Errorf(msg+":%w", args...)
 	}
