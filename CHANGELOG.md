@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.3.2](https://github.com/mashiike/psql-front/compare/v0.3.1...v0.3.2) - 2022-09-28
+
 ## [v0.3.1](https://github.com/mashiike/psql-front/compare/v0.3.0...v0.3.1) - 2022-09-28
 
 ## [v0.2.7](https://github.com/mashiike/psql-front/compare/v0.2.6...v0.2.7) - 2022-09-28
