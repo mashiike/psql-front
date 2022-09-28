@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.4.1](https://github.com/mashiike/psql-front/compare/v0.4.0...v0.4.1) - 2022-09-28
+- I want to refresh only once when multiple queries are run at the same time. by @mashiike in https://github.com/mashiike/psql-front/pull/37
+
 ## [v0.3.7](https://github.com/mashiike/psql-front/compare/v0.3.6...v0.3.7) - 2022-09-28
 - Faster cache updates by @mashiike in https://github.com/mashiike/psql-front/pull/35
 
