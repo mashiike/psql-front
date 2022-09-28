@@ -86,7 +86,6 @@ jobs:
       - name: Checkout repository
         if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         uses: actions/checkout@v3
-        if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
       - name: load build
         if: ${{ needs.tagpr.steps.tagpr.outputs.tag != '' }}
         id: load_build
