@@ -272,12 +272,27 @@ func (conn *ProxyConn) close() {
 	if conn.cancel != nil {
 		conn.cancel()
 	}
+	remoteAddr := "-"
 	if conn.client != nil {
-		conn.client.Close()
+		remoteAddr = conn.client.RemoteAddr().String()
+		log.Printf("[debug][%s] try client close", remoteAddr)
+		if err := conn.client.Close(); err != nil {
+			log.Printf("[error][%s] client close: %v", remoteAddr, err)
+		} else {
+			log.Printf("[info][%s] client close", remoteAddr)
+		}
+
 	}
 	if conn.upstream != nil {
-		conn.frontend.Send(&pgproto3.Terminate{})
-		conn.upstream.Close()
+		log.Printf("[debug][%s] try upstream close", remoteAddr)
+		if err := conn.frontend.Send(&pgproto3.Terminate{}); err != nil {
+			log.Printf("[error][%s] upstream send terminate close: %v", remoteAddr, err)
+		}
+		if err := conn.upstream.Close(); err != nil {
+			log.Printf("[error][%s] upstream close: %v", remoteAddr, err)
+		} else {
+			log.Printf("[info][%s] upstream close", remoteAddr)
+		}
 	}
 	conn.isClosed = true
 }
