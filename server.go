@@ -42,17 +42,18 @@ func (conn *ProxyConnection) Close(ctx context.Context) error {
 }
 
 type Server struct {
-	db               *pgxpool.Pool
-	cacheTTL         map[string]time.Duration
-	origins          map[string]Origin
-	originIDsByTable map[string]string
-	tables           map[string]*Table
-	tableCond        map[string]*sync.Cond
-	tableMutex       map[string]*sync.Mutex
-	tlsConfig        *tls.Config
-	idleTimeout      time.Duration
-	upstreamAddr     string
-	statsCfg         *StatsConfig
+	db                   *pgxpool.Pool
+	cacheTTL             map[string]time.Duration
+	origins              map[string]Origin
+	originIDsByTable     map[string]string
+	tables               map[string]*Table
+	tableCond            map[string]*sync.Cond
+	tableMutex           map[string]*sync.Mutex
+	tlsConfig            *tls.Config
+	idleTimeout          time.Duration
+	cacheControllTimeout time.Duration
+	upstreamAddr         string
+	statsCfg             *StatsConfig
 
 	startedAt time.Time
 
@@ -94,6 +95,11 @@ func New(ctx context.Context, cfg *Config) (*Server, error) {
 	}
 	if cfg.IdleTimeout != nil {
 		server.idleTimeout = *cfg.IdleTimeout
+	}
+	if cfg.CacheControllTimeout != nil {
+		server.cacheControllTimeout = *cfg.CacheControllTimeout
+	} else {
+		server.cacheControllTimeout = server.idleTimeout
 	}
 	if len(cfg.Certificates) > 0 {
 		log.Println("[info] use TLS")
@@ -302,8 +308,25 @@ func (server *Server) handleQuery(ctx context.Context, query string, isPrepareSt
 	log.Printf("[info][%s] referenced tables: [%s]", remoteAddr, strings.Join(lo.Map(tables, func(table *Table, _ int) string {
 		return table.String()
 	}), ", "))
-	if err := server.controlCache(ctx, query, tables, notifier); err != nil {
-		return fmt.Errorf("control cache failed: %w", err)
+	finished := make(chan struct{})
+	go func() {
+		ctx, cancel := context.WithTimeout(withRemoteAddr(context.Background(), remoteAddr), 24*time.Hour)
+		defer cancel()
+		if err := server.controlCache(ctx, query, tables, notifier); err != nil {
+			log.Printf("[error][%s] cache controll failed: %v", remoteAddr, err)
+		}
+		close(finished)
+		log.Printf("[info][%s] cache controll finished", remoteAddr)
+	}()
+	select {
+	case <-finished:
+		log.Printf("[debug][%s] trap finish cache controll", remoteAddr)
+	case <-time.After(server.cacheControllTimeout):
+		log.Printf("[info][%s] since the timeout has arrived, cache control should be done on the background.", remoteAddr)
+		notifier.Notify(ctx, &pgproto3.NoticeResponse{
+			Severity: "NOTICE",
+			Message:  "timeout,please retry after",
+		})
 	}
 	return nil
 }

@@ -29,8 +29,10 @@ type Config struct {
 	DefaultTTL    time.Duration         `yaml:"default_ttl,omitempty"`
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
-	IdleTimeout *time.Duration `yaml:"idle_timeout,omitempty"`
-	Stats       *StatsConfig   `yaml:"stats,omitempty"`
+	IdleTimeout          *time.Duration `yaml:"idle_timeout,omitempty"`
+	CacheControllTimeout *time.Duration `yaml:"cache_controll_timeout,omitempty"`
+
+	Stats *StatsConfig `yaml:"stats,omitempty"`
 
 	versionConstraints gv.Constraints `yaml:"-,omitempty"`
 }
@@ -54,7 +56,8 @@ func DefaultConfig() *Config {
 			Enabled:            PtrValue(true),
 			MonitoringInterval: 30 * time.Second,
 		},
-		IdleTimeout: PtrValue(600 * time.Second),
+		IdleTimeout:          PtrValue(600 * time.Second),
+		CacheControllTimeout: PtrValue(60 * time.Second),
 	}
 }
 
