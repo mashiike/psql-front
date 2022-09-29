@@ -553,15 +553,13 @@ func (w *cacheWriter) ReplaceCacheTable(ctx context.Context, t *Table) error {
 }
 
 func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) error {
-	chunk := lo.Chunk(rows, 100)
-	eg, egctx := errgroup.WithContext(ctx)
-	for i := range chunk {
-		r := chunk[i]
-		eg.Go(func() error {
-			return w.appendRows(egctx, r)
-		})
+	chunk := lo.Chunk(rows, 1000)
+	for _, r := range chunk {
+		if err := w.appendRows(ctx, r); err != nil {
+			return err
+		}
 	}
-	return eg.Wait()
+	return nil
 }
 
 func (w *cacheWriter) appendRows(ctx context.Context, rows [][]interface{}) error {
