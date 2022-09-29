@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.4.2](https://github.com/mashiike/psql-front/compare/v0.4.1...v0.4.2) - 2022-09-29
+- parallel insert busy tx by @mashiike in https://github.com/mashiike/psql-front/pull/41
+- If the cache is updated too long, let it be queried once in its old state by @mashiike in https://github.com/mashiike/psql-front/pull/43
+
 ## [v0.4.1](https://github.com/mashiike/psql-front/compare/v0.4.0...v0.4.1) - 2022-09-28
 - I want to refresh only once when multiple queries are run at the same time. by @mashiike in https://github.com/mashiike/psql-front/pull/37
 
