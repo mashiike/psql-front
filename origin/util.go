@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mattn/go-encoding"
 	"github.com/saintfish/chardet"
@@ -61,9 +62,32 @@ func PerformSchemaInference(rows [][]string, ignoreLines int, allowUnicodeColumN
 			case canUseTableName(header):
 				columnName = header
 			case allowUnicodeColumName:
-				columnName = strings.TrimSpace(norm.NFKC.String(header))
-				isUnicodeName = true
-
+				columnName = norm.NFKC.String(header)
+				columnNameRunes := make([]rune, 0, len(columnName))
+				for _, r := range columnName {
+					if !unicode.IsGraphic(r) && !unicode.IsLetter(r) {
+						continue
+					}
+					if unicode.IsSymbol(r) {
+						continue
+					}
+					if unicode.IsSpace(r) {
+						continue
+					}
+					if unicode.IsControl(r) {
+						continue
+					}
+					if unicode.IsPunct(r) {
+						continue
+					}
+					columnNameRunes = append(columnNameRunes, r)
+				}
+				if len(columnNameRunes) == 0 {
+					columnName = "anonymous_field"
+				} else {
+					columnName = string(columnNameRunes)
+					isUnicodeName = true
+				}
 			default:
 				columnName = "anonymous_field"
 			}
