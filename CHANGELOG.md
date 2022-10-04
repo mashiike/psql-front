@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.5.2](https://github.com/mashiike/psql-front/compare/v0.5.1...v0.5.2) - 2022-10-04
+- allow unicode column by @mashiike in https://github.com/mashiike/psql-front/pull/51
+
 ## [v0.5.1](https://github.com/mashiike/psql-front/compare/v0.5.0...v0.5.1) - 2022-10-04
 - append rows column name not lower by @mashiike in https://github.com/mashiike/psql-front/pull/49
 
