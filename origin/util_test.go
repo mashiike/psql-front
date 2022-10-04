@@ -224,7 +224,7 @@ func TestPerformSchemaInference(t *testing.T) {
 		{
 			name: "allow_unicode_name",
 			rows: [][]string{
-				{"id", "名前", "役割 ", "㊙"},
+				{"id", "{},名前\n()'\"`", "役割 ?🙇♂", "㊙"},
 				{"1", "平塚 えみ", "manager", "true"},
 				{"2", "大塚 曽根吾郎", "takumi", "false"},
 				{"3", "平成 太郎", "takumi", "true"},
