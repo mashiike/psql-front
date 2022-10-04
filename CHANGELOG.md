@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.4.3](https://github.com/mashiike/psql-front/compare/v0.4.2...v0.4.3) - 2022-10-04
+- allow unicode column name by @mashiike in https://github.com/mashiike/psql-front/pull/45
+- Bump github.com/samber/lo from 1.28.2 to 1.29.0 by @dependabot in https://github.com/mashiike/psql-front/pull/44
+
 ## [v0.4.2](https://github.com/mashiike/psql-front/compare/v0.4.1...v0.4.2) - 2022-09-29
 - parallel insert busy tx by @mashiike in https://github.com/mashiike/psql-front/pull/41
 - If the cache is updated too long, let it be queried once in its old state by @mashiike in https://github.com/mashiike/psql-front/pull/43
