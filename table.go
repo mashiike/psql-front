@@ -15,11 +15,10 @@ type Table struct {
 }
 
 type Column struct {
-	Name          string
-	DataType      string
-	Length        *int
-	Contraint     string
-	IsUnicodeName bool
+	Name      string
+	DataType  string
+	Length    *int
+	Contraint string
 }
 
 func (t *Table) String() string {
@@ -36,12 +35,7 @@ func (t *Table) GenerateDDL() (string, error) {
 		return "", errors.New("columns is required")
 	}
 	for _, column := range t.Columns {
-		var columnPart string
-		if column.IsUnicodeName {
-			columnPart = `"` + column.Name + `"`
-		} else {
-			columnPart = `"` + strings.ToLower(column.Name) + `"`
-		}
+		columnPart := `"` + strings.ToLower(column.Name) + `"`
 		if column.Length != nil && *column.Length > 0 {
 			fields = append(fields, strings.Join([]string{columnPart, fmt.Sprintf("%s(%d)", column.DataType, *column.Length), column.Contraint}, " "))
 		} else {
