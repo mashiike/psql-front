@@ -50,6 +50,7 @@ type Server struct {
 	tableCond            map[string]*sync.Cond
 	tableMutex           map[string]*sync.Mutex
 	tlsConfig            *tls.Config
+	initialFetch         bool
 	idleTimeout          time.Duration
 	cacheControllTimeout time.Duration
 	upstreamAddr         string
@@ -285,6 +286,26 @@ func (server *Server) RunWithContextAndListener(ctx context.Context, listener ne
 		}
 	}()
 
+	if server.initialFetch {
+		tx, err := server.db.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		err = func() error {
+			for _, table := range server.tables {
+				if err := server.refreshCache(ctx, tx, table); err != nil {
+					return err
+				}
+			}
+			return nil
+		}()
+		if err != nil {
+			log.Println("[warn] failed initial fetch", err)
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}
 	<-ctx.Done()
 	log.Println("[notice] psql-front shutdown...")
 	cancel()
