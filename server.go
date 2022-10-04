@@ -588,6 +588,9 @@ func (w *cacheWriter) AppendRows(ctx context.Context, rows [][]interface{}) erro
 func (w *cacheWriter) appendRows(ctx context.Context, rows [][]interface{}) error {
 
 	columns := lo.Map(w.table.Columns, func(c *Column, _ int) string {
+		if c.IsUnicodeName {
+			return `"` + c.Name + `"`
+		}
 		return `"` + strings.ToLower(c.Name) + `"`
 	})
 	q := psqlQueryBuilder.Insert(w.table.String()).Columns(columns...)
