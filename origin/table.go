@@ -43,12 +43,12 @@ func (cfg *BaseTableConfig) ToTable() *psqlfront.Table {
 	}
 }
 
-func (cfg *BaseTableConfig) DetectSchema(ctx context.Context, fetcher Fetcher, ignoreLines int) error {
+func (cfg *BaseTableConfig) DetectSchema(ctx context.Context, fetcher Fetcher, ignoreLines int, allowUnicodeColumnName bool) error {
 	rows, err := fetcher(ctx)
 	if err != nil {
 		return err
 	}
-	columns, err := PerformSchemaInference(rows, ignoreLines)
+	columns, err := PerformSchemaInference(rows, ignoreLines, allowUnicodeColumnName)
 	if err != nil {
 		remoteAddr := psqlfront.GetRemoteAddr(ctx)
 		log.Printf("[warn][%s] perform cchema inference: %v", remoteAddr, err)

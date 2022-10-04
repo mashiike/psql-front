@@ -54,10 +54,11 @@ func pointer[T any](t T) *T {
 
 func TestPerformSchemaInference(t *testing.T) {
 	cases := []struct {
-		name        string
-		rows        [][]string
-		ignoreLines int
-		expected    origin.ColumnConfigs
+		name                   string
+		rows                   [][]string
+		ignoreLines            int
+		allowUnicodeColumnName bool
+		expected               origin.ColumnConfigs
 	}{
 		{
 			name: "default",
@@ -220,10 +221,50 @@ func TestPerformSchemaInference(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "allow_unicode_name",
+			rows: [][]string{
+				{"id", "名前", "役割 ", "㊙"},
+				{"1", "平塚 えみ", "manager", "true"},
+				{"2", "大塚 曽根吾郎", "takumi", "false"},
+				{"3", "平成 太郎", "takumi", "true"},
+				{"4", "令和 みすず", "enginner", "false"},
+			},
+			ignoreLines:            1,
+			allowUnicodeColumnName: true,
+			expected: origin.ColumnConfigs{
+				{
+					Name:          "id",
+					DataType:      "BIGINT",
+					ColumnIndex:   pointer(0),
+					IsUnicodeName: false,
+				},
+				{
+					Name:          "名前",
+					DataType:      "VARCHAR",
+					DataLength:    pointer(256),
+					ColumnIndex:   pointer(1),
+					IsUnicodeName: true,
+				},
+				{
+					Name:          "役割",
+					DataType:      "VARCHAR",
+					DataLength:    pointer(256),
+					ColumnIndex:   pointer(2),
+					IsUnicodeName: true,
+				},
+				{
+					Name:          "秘",
+					DataType:      "BOOLEAN",
+					ColumnIndex:   pointer(3),
+					IsUnicodeName: true,
+				},
+			},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			actual, err := origin.PerformSchemaInference(c.rows, c.ignoreLines)
+			actual, err := origin.PerformSchemaInference(c.rows, c.ignoreLines, c.allowUnicodeColumnName)
 			require.NoError(t, err)
 			require.EqualValues(t, c.expected, actual)
 		})

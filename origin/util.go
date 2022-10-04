@@ -14,6 +14,7 @@ import (
 	"github.com/mattn/go-encoding"
 	"github.com/saintfish/chardet"
 	"github.com/samber/lo"
+	"golang.org/x/text/unicode/norm"
 )
 
 func ConvertTextEncoding(reader io.Reader, textEncoding *string) io.Reader {
@@ -44,26 +45,35 @@ func ConvertTextEncoding(reader io.Reader, textEncoding *string) io.Reader {
 	return r
 }
 
-func PerformSchemaInference(rows [][]string, ignoreLines int) (ColumnConfigs, error) {
+func PerformSchemaInference(rows [][]string, ignoreLines int, allowUnicodeColumName bool) (ColumnConfigs, error) {
 	if len(rows) <= ignoreLines {
 		return nil, errors.New("data not found")
 	}
 	columnNames := make(map[string]int)
+	isUnicodeNames := make(map[string]bool)
 	if ignoreLines == 1 {
 		duplicationCount := make(map[string]int)
 		duplicationCount["anonymous_field"] = 1
 		for i, header := range rows[0] {
 			var columnName string
-			if canUseTableName(header) {
+			var isUnicodeName bool
+			switch {
+			case canUseTableName(header):
 				columnName = header
-			} else {
+			case allowUnicodeColumName:
+				columnName = strings.TrimSpace(norm.NFKC.String(header))
+				isUnicodeName = true
+
+			default:
 				columnName = "anonymous_field"
 			}
 			c, ok := duplicationCount[columnName]
 			if ok {
 				columnNames[fmt.Sprintf("%s%d", columnName, c)] = i
+				isUnicodeNames[fmt.Sprintf("%s%d", columnName, c)] = isUnicodeName
 			} else {
 				columnNames[columnName] = i
+				isUnicodeNames[columnName] = isUnicodeName
 			}
 			duplicationCount[columnName] = c + 1
 		}
@@ -77,8 +87,9 @@ func PerformSchemaInference(rows [][]string, ignoreLines int) (ColumnConfigs, er
 	for name, index := range columnNames {
 		_index := index
 		column := &ColumnConfig{
-			Name:        name,
-			ColumnIndex: &_index,
+			Name:          name,
+			ColumnIndex:   &_index,
+			IsUnicodeName: isUnicodeNames[name],
 		}
 		data := make([]string, 0, len(rows))
 		for _, row := range rows {
