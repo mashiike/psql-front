@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.5.4](https://github.com/mashiike/psql-front/compare/v0.5.3...v0.5.4) - 2022-10-04
+
 ## [v0.5.3](https://github.com/mashiike/psql-front/compare/v0.5.2...v0.5.3) - 2022-10-04
 - if unicode column name, latter all lower by @mashiike in https://github.com/mashiike/psql-front/pull/53
 
