@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.5.1](https://github.com/mashiike/psql-front/compare/v0.5.0...v0.5.1) - 2022-10-04
+- append rows column name not lower by @mashiike in https://github.com/mashiike/psql-front/pull/49
+
 ## [v0.4.4](https://github.com/mashiike/psql-front/compare/v0.4.3...v0.4.4) - 2022-10-04
 - initial fetch by @mashiike in https://github.com/mashiike/psql-front/pull/47
 
