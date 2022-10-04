@@ -29,6 +29,7 @@ type Config struct {
 	DefaultTTL    time.Duration         `yaml:"default_ttl,omitempty"`
 	Origins       []*CommonOriginConfig `yaml:"origins,omitempty"`
 
+	InitialFetch         bool           `yaml:"initial_fetch,omitempty"`
 	IdleTimeout          *time.Duration `yaml:"idle_timeout,omitempty"`
 	CacheControllTimeout *time.Duration `yaml:"cache_controll_timeout,omitempty"`
 
