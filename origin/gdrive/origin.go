@@ -102,6 +102,7 @@ type TableConfig struct {
 	IgnoreLines              int           `yaml:"ignore_lines"`
 	SchemaDetection          bool          `yaml:"schema_detection"`
 	DetectedSchemaExpiration time.Duration `yaml:"detected_schema_expiration"`
+	AllowUnicodeColumnName   bool          `yaml:"allow_unicode_column_name"`
 	URL                      *url.URL      `yaml:"-"`
 	LastSchemaDetection      time.Time     `yaml:"-"`
 
@@ -192,9 +193,6 @@ func (cfg *TableConfig) Restrict(schema string, driveSvc *drive.Service, sheetsS
 			return fmt.Errorf("columns: empty")
 		}
 	} else {
-		if cfg.DetectedSchemaExpiration == 0 {
-			cfg.DetectedSchemaExpiration = 24 * time.Hour
-		}
 		if err := cfg.DetectSchema(context.Background()); err != nil {
 			log.Printf("[warn] %s.%s initial schema detection failed: %v", schema, cfg.Name, err)
 			cfg.Columns = origin.ColumnConfigs{
@@ -257,12 +255,12 @@ func (cfg *TableConfig) DetectSchema(ctx context.Context) error {
 	remoteAddr := psqlfront.GetRemoteAddr(ctx)
 	log.Printf("[debug][%s] try detect schema: file_id=%s", remoteAddr, cfg.FileID)
 	now := flextime.Now()
-	if now.Sub(cfg.LastSchemaDetection) < cfg.DetectedSchemaExpiration {
+	if cfg.DetectedSchemaExpiration != 0 && now.Sub(cfg.LastSchemaDetection) < cfg.DetectedSchemaExpiration {
 		log.Printf("[debug][%s] skip detect schema: file_id=%s", remoteAddr, cfg.FileID)
 		return nil
 	}
 	log.Printf("[debug][%s] start detect schema: file_id=%s", remoteAddr, cfg.FileID)
-	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.IgnoreLines); err != nil {
+	if err := cfg.BaseTableConfig.DetectSchema(ctx, cfg.Fetcher, cfg.IgnoreLines, cfg.AllowUnicodeColumnName); err != nil {
 		return err
 	}
 	log.Printf("[debug][%s] end detect schema: file_id=%s", remoteAddr, cfg.FileID)

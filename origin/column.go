@@ -10,11 +10,12 @@ import (
 )
 
 type ColumnConfig struct {
-	Name        string `yaml:"name,omitempty"`
-	DataType    string `yaml:"data_type,omitempty"`
-	DataLength  *int   `yaml:"length,omitempty"`
-	Contraint   string `yaml:"contraint,omitempty"`
-	ColumnIndex *int   `yaml:"column_index,omitempty"`
+	Name          string `yaml:"name,omitempty"`
+	DataType      string `yaml:"data_type,omitempty"`
+	DataLength    *int   `yaml:"length,omitempty"`
+	Contraint     string `yaml:"contraint,omitempty"`
+	ColumnIndex   *int   `yaml:"column_index,omitempty"`
+	IsUnicodeName bool   `yaml:"is_unicode_name,omitempty"`
 }
 
 type ColumnConfigs []*ColumnConfig
@@ -34,10 +35,11 @@ func (cfgs ColumnConfigs) Restrict() error {
 func (cfgs ColumnConfigs) ToColumns() []*psqlfront.Column {
 	return lo.Map(cfgs, func(column *ColumnConfig, _ int) *psqlfront.Column {
 		return &psqlfront.Column{
-			Name:      column.Name,
-			DataType:  column.DataType,
-			Length:    column.DataLength,
-			Contraint: column.Contraint,
+			Name:          column.Name,
+			DataType:      column.DataType,
+			Length:        column.DataLength,
+			Contraint:     column.Contraint,
+			IsUnicodeName: column.IsUnicodeName,
 		}
 	})
 }
