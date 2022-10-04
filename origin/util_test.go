@@ -245,7 +245,7 @@ func TestPerformSchemaInference(t *testing.T) {
 					ColumnIndex: pointer(1),
 				},
 				{
-					Name:        "it役割",
+					Name:        "IT役割",
 					DataType:    "VARCHAR",
 					DataLength:  pointer(256),
 					ColumnIndex: pointer(2),
