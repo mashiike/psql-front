@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/Songmu/flextime v0.1.0
 	github.com/Songmu/go-ltsv v0.1.0
-	github.com/aws/aws-sdk-go-v2 v1.16.16
+	github.com/aws/aws-sdk-go-v2 v1.17.3
 	github.com/aws/aws-sdk-go-v2/config v1.17.7
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.33
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.27.11
@@ -51,7 +51,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.11.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.19 // indirect
-	github.com/aws/smithy-go v1.13.3 // indirect
+	github.com/aws/smithy-go v1.13.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
