@@ -27,7 +27,7 @@ require (
 	github.com/samber/lo v1.29.0
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/sync v0.0.0-20220923202941-7f9b1623fab7
-	golang.org/x/text v0.3.7
+	golang.org/x/text v0.7.0
 	google.golang.org/api v0.98.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -78,9 +78,9 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be // indirect
 	golang.org/x/exp v0.0.0-20220927162542-c76eaa363f9d // indirect
-	golang.org/x/net v0.0.0-20220927171203-f486391704dc // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1 // indirect
-	golang.org/x/sys v0.0.0-20220927170352-d9d178bc13c6 // indirect
+	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220927151529-dcaddaf36704 // indirect
