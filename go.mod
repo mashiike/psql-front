@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.15
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.55
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.5
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.14.1
 	github.com/fujiwara/logutils v1.1.0
 	github.com/fukata/golang-stats-api-handler v1.0.0
 	github.com/goccy/go-json v0.10.0
@@ -72,8 +72,8 @@ require (
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lestrrat-go/option v1.0.0 // indirect
 	github.com/lib/pq v1.10.6 // indirect
-	github.com/mattn/go-colorable v0.1.12 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
