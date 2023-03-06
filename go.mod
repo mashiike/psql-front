@@ -27,7 +27,7 @@ require (
 	github.com/samber/lo v1.37.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/sync v0.1.0
-	golang.org/x/text v0.7.0
+	golang.org/x/text v0.8.0
 	google.golang.org/api v0.110.0
 	gopkg.in/yaml.v3 v3.0.1
 )
